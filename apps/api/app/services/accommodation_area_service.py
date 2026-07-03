@@ -25,6 +25,8 @@ ANCHOR_WEIGHTS = {
     "alert": 0.1,
 }
 
+NEGATIVE_PHRASES = ["不推荐", "不建议", "过远", "太远", "缺点", "风险", "不可控", "不适合"]
+
 
 class AccommodationAreaService:
     def recommend(self, request: RecommendAccommodationAreaRequest) -> RecommendAccommodationAreaResponse:
@@ -98,9 +100,9 @@ class AccommodationAreaService:
             name=f"{area}近场片区",
             area=area,
             search_keyword=f"{area} 酒店",
-            reason=f"最贴近关键节点「{anchor.title}」，适合把通勤风险降到最低。",
+            reason=f"最贴近关键节点「{anchor.title}」，适合优先保障准时到达和少步行体验。",
             pros=["离核心行程最近", "雨天或早高峰更稳", "适合会议/比赛/赶时间场景"],
-            cons=["价格通常略高", "热门日期房源可能紧张"],
+            cons=["建议提前锁定可免费取消房源", "适合优先筛选交通便利型酒店"],
             best_for="准时优先、少折腾、行程中有硬锚点",
             geo_lat=anchor.geo_lat,
             geo_lng=anchor.geo_lng,
@@ -126,7 +128,7 @@ class AccommodationAreaService:
             search_keyword=f"{area} 地铁 酒店",
             reason="兼顾抵达/离开与市内移动，适合多节点行程。",
             pros=["交通连接更稳", "适合早到晚走", "酒店选择通常更多"],
-            cons=["到核心会场可能不是最近", "高峰时段仍需预留缓冲"],
+            cons=["建议搭配地铁/打车双路线备选", "适合预留更从容的出发时间"],
             best_for="多天行程、跨区移动、需要兼顾车站机场",
             geo_lat=key.geo_lat,
             geo_lng=key.geo_lng,
@@ -148,10 +150,10 @@ class AccommodationAreaService:
             name=f"{area}性价比缓冲片区",
             area=area,
             search_keyword=f"{area} 性价比 酒店",
-            reason="离核心行程保持可接受距离，同时通常能换来更好的价格或房型。",
+            reason="在保持顺路可达的基础上，通常能获得更丰富的房型选择。",
             pros=["预算更友好", "可选房型更多", "适合宽松节奏"],
-            cons=["需要额外交通时间", "遇到恶劣天气要提前出发"],
-            best_for="预算敏感、行程节奏较宽松、愿意用通勤换空间",
+            cons=["建议选择近地铁或主干路的酒店", "适合把出发提醒设置得更充裕"],
+            best_for="预算敏感、行程节奏较宽松、希望房型选择更多",
             geo_lat=soft_anchor.geo_lat,
             geo_lng=soft_anchor.geo_lng,
             distance_minutes_to_key_anchor=minutes,
@@ -172,7 +174,7 @@ class AccommodationAreaService:
                 search_keyword=f"{city} 市中心 酒店",
                 reason="缺少明确行程锚点时，核心商圈通常交通和餐饮最稳。",
                 pros=["交通便利", "餐饮选择多", "适合首次到访"],
-                cons=["价格可能偏高"],
+                cons=["建议优先筛选评分稳定、交通便利的酒店"],
                 best_for="信息不完整时的稳妥默认选择",
                 estimated_price_range=base_price,
                 score=86,
@@ -183,7 +185,7 @@ class AccommodationAreaService:
                 search_keyword=f"{city} 车站 酒店",
                 reason="适合早到、晚走或携带较多行李的行程。",
                 pros=["抵离方便", "减少跨城通勤压力"],
-                cons=["可能离游玩/会议节点较远"],
+                cons=["建议结合首日抵达和末日返程时间选择"],
                 best_for="交通优先",
                 estimated_price_range=self._price_range(request, "budget"),
                 score=78,
@@ -267,7 +269,7 @@ class AccommodationAreaService:
       "id": "候选 id",
       "reason": "一句明确推荐理由",
       "pros": ["最多3条优势"],
-      "cons": ["最多2条注意点"],
+      "cons": ["最多2条正向适配建议，避免不推荐、缺点、过远、风险等负向表达"],
       "best_for": "适合人群/场景",
       "score": 0-100
     }}
@@ -295,12 +297,13 @@ class AccommodationAreaService:
                 if not update:
                     polished.append(candidate)
                     continue
+                tips = self._positive_tips(update.get("cons") or candidate.cons)
                 polished.append(
                     candidate.model_copy(
                         update={
-                            "reason": update.get("reason") or candidate.reason,
+                            "reason": self._positive_text(update.get("reason") or candidate.reason),
                             "pros": update.get("pros") or candidate.pros,
-                            "cons": update.get("cons") or candidate.cons,
+                            "cons": tips,
                             "best_for": update.get("best_for") or candidate.best_for,
                             "score": int(update.get("score") or candidate.score),
                         }
@@ -309,6 +312,17 @@ class AccommodationAreaService:
             return sorted(polished, key=lambda item: item.score, reverse=True)
         except Exception:
             return candidates
+
+    @staticmethod
+    def _positive_text(text: str) -> str:
+        if any(phrase in text for phrase in NEGATIVE_PHRASES):
+            return "该片区更适合作为有明确出行节奏时的备选住宿范围。"
+        return text
+
+    @staticmethod
+    def _positive_tips(items: list[str]) -> list[str]:
+        cleaned = [item for item in items if not any(phrase in item for phrase in NEGATIVE_PHRASES)]
+        return cleaned[:2] or ["建议结合出发时间和交通方式筛选酒店"]
 
     @staticmethod
     def _summary(city: str, itinerary: Itinerary | None, candidates: list[AccommodationAreaCandidate]) -> str:

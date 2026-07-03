@@ -856,7 +856,7 @@ export function TravelDirectorScreen() {
                         <Text style={styles.hotelAreaMetric}>{area.best_for}</Text>
                       </View>
                       <Text style={styles.hotelAreaPros}>优势：{area.pros.join("、")}</Text>
-                      {area.cons.length ? <Text style={styles.hotelAreaCons}>注意：{area.cons.join("、")}</Text> : null}
+                      {area.cons.length ? <Text style={styles.hotelAreaTips}>适配建议：{area.cons.join("、")}</Text> : null}
                       <Pressable style={styles.areaHotelBtn} disabled={poiLoading} onPress={() => handleSearchHotelsInArea(area)}>
                         <Text style={styles.areaHotelBtnText}>按此片区找酒店</Text>
                       </Pressable>
@@ -1136,7 +1136,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   hotelAreaPros: { color: "#1A9D5C", fontSize: 10, lineHeight: 15, fontWeight: "800" },
-  hotelAreaCons: { color: "#F97316", fontSize: 10, lineHeight: 15, fontWeight: "800" },
+  hotelAreaTips: { color: "#287CFF", fontSize: 10, lineHeight: 15, fontWeight: "800" },
   areaHotelBtn: {
     minHeight: 36,
     borderRadius: 12,
