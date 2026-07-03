@@ -37,6 +37,8 @@ from app.models.schemas import (
     RecommendPOIResponse,
     ConfirmPOIRequest,
     ItineraryPriceQuote,
+    RecommendAccommodationAreaRequest,
+    RecommendAccommodationAreaResponse,
 )
 from app.agent.intent import intent_extractor
 from app.services.intent_analysis import intent_analysis_service
@@ -50,6 +52,7 @@ from app.services.poster_features import (
 )
 from app.services.price_engine import price_engine
 from app.services.rag import rag_service
+from app.services.accommodation_area_service import accommodation_area_service
 from app.services.recommendation_service import recommendation_service
 from app.services.speech import speech_service
 from app.services.store import store
@@ -214,6 +217,13 @@ def search_recommendations(request: RecommendPOIRequest) -> RecommendPOIResponse
     if not request.city.strip() or not request.keyword.strip():
         raise HTTPException(status_code=400, detail="city and keyword are required")
     return recommendation_service.recommend(request)
+
+
+@app.post("/recommendations/accommodation-areas", response_model=RecommendAccommodationAreaResponse)
+def search_accommodation_areas(request: RecommendAccommodationAreaRequest) -> RecommendAccommodationAreaResponse:
+    if not request.city.strip():
+        raise HTTPException(status_code=400, detail="city is required")
+    return accommodation_area_service.recommend(request)
 
 
 @app.post("/nodes/confirm-poi")

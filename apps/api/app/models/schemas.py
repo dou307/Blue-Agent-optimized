@@ -251,6 +251,36 @@ class RecommendPOIResponse(BaseModel):
     llm_recommendation: str
 
 
+class AccommodationAreaCandidate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str
+    area: str
+    search_keyword: str
+    reason: str
+    pros: list[str] = Field(default_factory=list)
+    cons: list[str] = Field(default_factory=list)
+    best_for: str = ""
+    geo_lat: float | None = None
+    geo_lng: float | None = None
+    distance_minutes_to_key_anchor: int | None = None
+    estimated_price_range: str = ""
+    score: int = 80
+
+
+class RecommendAccommodationAreaRequest(BaseModel):
+    user_id: str = "demo-user"
+    city: str
+    itinerary_id: str | None = None
+    preference: str | None = None
+    budget: str | None = None
+
+
+class RecommendAccommodationAreaResponse(BaseModel):
+    candidates: list[AccommodationAreaCandidate]
+    summary: str
+    llm_recommendation: str
+
+
 class ConfirmPOIRequest(BaseModel):
     user_id: str = "demo-user"
     itinerary_id: str

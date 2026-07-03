@@ -222,6 +222,28 @@ export type RecommendPOIResponse = {
   llm_recommendation: string;
 };
 
+export type AccommodationAreaCandidate = {
+  id: string;
+  name: string;
+  area: string;
+  search_keyword: string;
+  reason: string;
+  pros: string[];
+  cons: string[];
+  best_for: string;
+  geo_lat?: number | null;
+  geo_lng?: number | null;
+  distance_minutes_to_key_anchor?: number | null;
+  estimated_price_range: string;
+  score: number;
+};
+
+export type RecommendAccommodationAreaResponse = {
+  candidates: AccommodationAreaCandidate[];
+  summary: string;
+  llm_recommendation: string;
+};
+
 export type PriceBreakdownItem = {
   label: string;
   amount: number;

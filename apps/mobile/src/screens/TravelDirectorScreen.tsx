@@ -24,6 +24,7 @@ import {
   prepareOrder,
   reorderNodes,
   requestReplan,
+  searchAccommodationAreas,
   searchRecommendations,
   smartUpdateNode,
   simulateIncident,
@@ -39,6 +40,7 @@ import {
   ItineraryPriceQuote,
   PlanComparison,
   PlanOption,
+  AccommodationAreaCandidate,
   POICandidate,
   ReplanProposal,
   SystemSyncResult,
@@ -114,6 +116,10 @@ export function TravelDirectorScreen() {
   const [poiSummary, setPoiSummary] = useState("");
   const [poiRecommendation, setPoiRecommendation] = useState("");
   const [poiPickerTitle, setPoiPickerTitle] = useState("多平台候选");
+  const [hotelAreaLoading, setHotelAreaLoading] = useState(false);
+  const [hotelAreaSummary, setHotelAreaSummary] = useState("");
+  const [hotelAreaRecommendation, setHotelAreaRecommendation] = useState("");
+  const [hotelAreaCandidates, setHotelAreaCandidates] = useState<AccommodationAreaCandidate[]>([]);
   const [poiContext, setPoiContext] = useState<{
     category: "food" | "hotel";
     keyword: string;
@@ -255,8 +261,52 @@ export function TravelDirectorScreen() {
     }
   }
 
+  async function handleRecommendHotelAreas() {
+    if (!itinerary) return;
+    const city = itinerary.intent.destination || structured.destination;
+    if (!city) {
+      Alert.alert("缺少目的地", "请先填写或解析目的地城市。");
+      return;
+    }
+    setHotelAreaLoading(true);
+    try {
+      const response = await searchAccommodationAreas({
+        city,
+        itinerary_id: itinerary.id,
+        preference: itinerary.intent.preferences.join(" / "),
+        budget: itinerary.intent.budget ?? undefined,
+      });
+      setHotelAreaCandidates(response.candidates);
+      setHotelAreaSummary(response.summary);
+      setHotelAreaRecommendation(response.llm_recommendation);
+    } catch (error) {
+      Alert.alert("片区推荐失败", error instanceof Error ? error.message : "请确认后端已启动");
+    } finally {
+      setHotelAreaLoading(false);
+    }
+  }
+
+  function handleSearchHotelsInArea(area: AccommodationAreaCandidate) {
+    if (!itinerary) return;
+    const lastItem = itinerary.items[itinerary.items.length - 1];
+    openPOIPicker({
+      category: "hotel",
+      keyword: area.search_keyword || `${area.area} 酒店`,
+      day: lastItem?.day ?? 1,
+      start_time: "20:00",
+      end_time: "08:00",
+      insert_after_item_id: lastItem?.id,
+      near_lat: area.geo_lat ?? undefined,
+      near_lng: area.geo_lng ?? undefined,
+    });
+  }
+
   function handleQuickRecommend(category: "food" | "hotel") {
     if (!itinerary) return;
+    if (category === "hotel") {
+      handleRecommendHotelAreas();
+      return;
+    }
     const lastItem = itinerary.items[itinerary.items.length - 1];
     const keyword =
       category === "food"
@@ -777,10 +827,43 @@ export function TravelDirectorScreen() {
                 <Pressable style={styles.quickPickBtn} disabled={loading || poiLoading} onPress={() => handleQuickRecommend("food")}>
                   <Text style={styles.quickPickText}>推荐美食</Text>
                 </Pressable>
-                <Pressable style={styles.quickPickBtn} disabled={loading || poiLoading} onPress={() => handleQuickRecommend("hotel")}>
-                  <Text style={styles.quickPickText}>推荐酒店</Text>
+                <Pressable style={styles.quickPickBtn} disabled={loading || poiLoading || hotelAreaLoading} onPress={() => handleQuickRecommend("hotel")}>
+                  <Text style={styles.quickPickText}>{hotelAreaLoading ? "分析住宿片区..." : "推荐酒店"}</Text>
                 </Pressable>
               </View>
+              {hotelAreaCandidates.length ? (
+                <View style={styles.hotelAreaPanel}>
+                  <Text style={styles.hotelAreaTitle}>住宿片区建议</Text>
+                  <Text style={styles.hotelAreaSummary}>{hotelAreaSummary}</Text>
+                  <Text style={styles.hotelAreaRecommendation}>{hotelAreaRecommendation}</Text>
+                  {hotelAreaCandidates.map((area) => (
+                    <View key={area.id} style={styles.hotelAreaCard}>
+                      <View style={styles.hotelAreaHeader}>
+                        <View style={styles.flex}>
+                          <Text style={styles.hotelAreaName}>{area.name}</Text>
+                          <Text style={styles.hotelAreaReason}>{area.reason}</Text>
+                        </View>
+                        <View style={styles.hotelAreaScore}>
+                          <Text style={styles.hotelAreaScoreValue}>{area.score}</Text>
+                          <Text style={styles.hotelAreaScoreLabel}>匹配</Text>
+                        </View>
+                      </View>
+                      <View style={styles.hotelAreaMetrics}>
+                        <Text style={styles.hotelAreaMetric}>{area.estimated_price_range || "价格待估"}</Text>
+                        {area.distance_minutes_to_key_anchor != null ? (
+                          <Text style={styles.hotelAreaMetric}>到关键点约 {area.distance_minutes_to_key_anchor} 分钟</Text>
+                        ) : null}
+                        <Text style={styles.hotelAreaMetric}>{area.best_for}</Text>
+                      </View>
+                      <Text style={styles.hotelAreaPros}>优势：{area.pros.join("、")}</Text>
+                      {area.cons.length ? <Text style={styles.hotelAreaCons}>注意：{area.cons.join("、")}</Text> : null}
+                      <Pressable style={styles.areaHotelBtn} disabled={poiLoading} onPress={() => handleSearchHotelsInArea(area)}>
+                        <Text style={styles.areaHotelBtnText}>按此片区找酒店</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               <MapTopologyBoard
                 itinerary={itinerary}
                 city={structured.destination}
@@ -1009,4 +1092,57 @@ const styles = StyleSheet.create({
     borderColor: "#B8EBD0",
   },
   quickPickText: { color: "#1A9D5C", fontSize: 12, fontWeight: "900" },
+  hotelAreaPanel: {
+    gap: 10,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "#F8FCFF",
+    borderWidth: 1,
+    borderColor: "#D8E6FF",
+  },
+  hotelAreaTitle: { color: "#233B63", fontSize: 13, fontWeight: "900" },
+  hotelAreaSummary: { color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
+  hotelAreaRecommendation: { color: "#287CFF", fontSize: 11, lineHeight: 16, fontWeight: "900" },
+  hotelAreaCard: {
+    gap: 8,
+    padding: 11,
+    borderRadius: 13,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5EEF9",
+  },
+  hotelAreaHeader: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  hotelAreaName: { color: "#233B63", fontSize: 13, fontWeight: "900" },
+  hotelAreaReason: { marginTop: 4, color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
+  hotelAreaScore: {
+    minWidth: 46,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#EEF6FF",
+  },
+  hotelAreaScoreValue: { color: "#1B63FF", fontSize: 16, fontWeight: "900" },
+  hotelAreaScoreLabel: { marginTop: 1, color: "#7F93B1", fontSize: 9, fontWeight: "900" },
+  hotelAreaMetrics: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  hotelAreaMetric: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: "hidden",
+    color: "#527099",
+    backgroundColor: "#EEF6FF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  hotelAreaPros: { color: "#1A9D5C", fontSize: 10, lineHeight: 15, fontWeight: "800" },
+  hotelAreaCons: { color: "#F97316", fontSize: 10, lineHeight: 15, fontWeight: "800" },
+  areaHotelBtn: {
+    minHeight: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1B63FF",
+  },
+  areaHotelBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
 });

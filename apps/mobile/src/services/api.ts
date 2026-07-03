@@ -389,6 +389,20 @@ export async function searchRecommendations(params: RecommendPOIParams) {
   return parseResponse<import("../types").RecommendPOIResponse>(response);
 }
 
+export async function searchAccommodationAreas(params: {
+  city: string;
+  itinerary_id?: string;
+  preference?: string;
+  budget?: string;
+}) {
+  const response = await fetch(`${API_BASE_URL}/recommendations/accommodation-areas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: USER_ID, ...params }),
+  });
+  return parseResponse<import("../types").RecommendAccommodationAreaResponse>(response);
+}
+
 export async function confirmPOI(
   itineraryId: string,
   candidate: import("../types").POICandidate,
