@@ -71,8 +71,6 @@ const stageMeta: Array<{ id: Stage; title: string; subtitle: string }> = [
   { id: "review", title: "D5 回顾沉淀", subtitle: "记忆同步" },
 ];
 
-const stageFlow = ["Input", "Perception", "Topology", "Linkage", "Guardian"];
-
 function topologyStats(itinerary: Itinerary) {
   return itinerary.items.reduce(
     (stats, item) => {
@@ -833,6 +831,11 @@ export function TravelDirectorScreen() {
     }
     mapTouchTimer.current = setTimeout(() => setPageScrollEnabled(true), 350);
   }
+  const currentStageIndex = stageMeta.findIndex((item) => item.id === stage);
+  const currentStage = stageMeta[currentStageIndex] ?? stageMeta[0];
+  const prevStage = currentStageIndex > 0 ? stageMeta[currentStageIndex - 1] : undefined;
+  const nextStage = currentStageIndex >= 0 && currentStageIndex < stageMeta.length - 1 ? stageMeta[currentStageIndex + 1] : undefined;
+  const cleanStageTitle = (title: string) => title.replace(/^D\d\s*/, "");
 
   return (
     <ScrollView
@@ -862,24 +865,51 @@ export function TravelDirectorScreen() {
             </View>
           </View>
 
-          <View style={styles.flowRail}>
-            {stageFlow.map((item, index) => (
-              <View key={item} style={styles.flowStep}>
-                <Text style={styles.flowIndex}>{index + 1}</Text>
-                <Text style={styles.flowText}>{item}</Text>
-              </View>
-            ))}
-          </View>
+          <View style={styles.stageSwitcher}>
+            <Pressable
+              style={[styles.stageSideButton, !prevStage ? styles.stageSideButtonDisabled : null]}
+              disabled={!prevStage}
+              onPress={() => {
+                if (prevStage) setStage(prevStage.id);
+              }}
+            >
+              <Text style={[styles.stageSideArrow, !prevStage ? styles.stageSideArrowDisabled : null]}>{"<"}</Text>
+              <Text style={[styles.stageSideTitle, !prevStage ? styles.stageSideTextDisabled : null]} numberOfLines={1}>
+                {prevStage ? cleanStageTitle(prevStage.title) : "已是起点"}
+              </Text>
+              <Text style={[styles.stageSideSubtitle, !prevStage ? styles.stageSideTextDisabled : null]} numberOfLines={2}>
+                {prevStage?.subtitle ?? "暂无上一阶段"}
+              </Text>
+            </Pressable>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stageTabs}>
-            {stageMeta.map((item, index) => (
-              <Pressable key={item.id} style={[styles.stageTab, stage === item.id ? styles.stageTabActive : null]} onPress={() => setStage(item.id)}>
-                <Text style={[styles.stageIndex, stage === item.id ? styles.stageIndexActive : null]}>{index + 1}</Text>
-                <Text style={[styles.stageTitle, stage === item.id ? styles.stageTitleActive : null]}>{item.title}</Text>
-                <Text style={styles.stageSub}>{item.subtitle}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+            <View style={styles.stageCurrentCard}>
+              <View style={styles.stageCurrentHeader}>
+                <Text style={styles.stageCurrentIndex}>{currentStageIndex + 1}</Text>
+                <Text style={styles.stageCurrentTitle} numberOfLines={1}>
+                  {cleanStageTitle(currentStage.title)}
+                </Text>
+              </View>
+              <Text style={styles.stageCurrentSubtitle} numberOfLines={2}>
+                {currentStage.subtitle}
+              </Text>
+            </View>
+
+            <Pressable
+              style={[styles.stageSideButton, !nextStage ? styles.stageSideButtonDisabled : null]}
+              disabled={!nextStage}
+              onPress={() => {
+                if (nextStage) setStage(nextStage.id);
+              }}
+            >
+              <Text style={[styles.stageSideArrow, !nextStage ? styles.stageSideArrowDisabled : null]}>{">"}</Text>
+              <Text style={[styles.stageSideTitle, !nextStage ? styles.stageSideTextDisabled : null]} numberOfLines={1}>
+                {nextStage ? cleanStageTitle(nextStage.title) : "已到终点"}
+              </Text>
+              <Text style={[styles.stageSideSubtitle, !nextStage ? styles.stageSideTextDisabled : null]} numberOfLines={2}>
+                {nextStage?.subtitle ?? "暂无下一阶段"}
+              </Text>
+            </Pressable>
+          </View>
 
           <AgentStatus loading={loading} subtitle={subtitle} />
 
@@ -1331,37 +1361,109 @@ const styles = StyleSheet.create({
   heading: { color: "#233B63", fontSize: 16, fontWeight: "900" },
   titleBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, overflow: "hidden", color: "#4383FF", backgroundColor: "rgba(211,230,255,0.9)", fontSize: 10, fontWeight: "800" },
   subheading: { marginTop: 7, color: "#7F93B1", fontSize: 11, fontWeight: "700" },
-  stageTabs: { gap: 8, paddingVertical: 14 },
-  stageTab: { width: 112, padding: 10, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.62)" },
-  stageTabActive: { backgroundColor: "#FFFFFF" },
-  stageIndex: { width: 22, height: 22, borderRadius: 11, overflow: "hidden", textAlign: "center", textAlignVertical: "center", color: "#93A3BA", backgroundColor: "#EEF6FF", fontWeight: "900" },
-  stageIndexActive: { color: "#FFFFFF", backgroundColor: "#287CFF" },
-  stageTitle: { marginTop: 7, color: "#527099", fontSize: 11, fontWeight: "900" },
-  stageTitleActive: { color: "#287CFF" },
-  stageSub: { marginTop: 3, color: "#8BA0BD", fontSize: 9, fontWeight: "800" },
-  flowRail: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
-  flowStep: {
+  stageSwitcher: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.76)",
+    alignItems: "stretch",
+    gap: 8,
+    paddingVertical: 10,
   },
-  flowIndex: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+  stageSideButton: {
+    width: 64,
+    minHeight: 82,
+    paddingHorizontal: 6,
+    paddingVertical: 7,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(40,124,255,0.14)",
+  },
+  stageSideButtonDisabled: {
+    backgroundColor: "rgba(238,246,255,0.46)",
+    borderColor: "rgba(147,163,186,0.18)",
+  },
+  stageSideArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     overflow: "hidden",
     textAlign: "center",
     textAlignVertical: "center",
     color: "#FFFFFF",
     backgroundColor: "#287CFF",
-    fontSize: 9,
+    fontSize: 21,
     fontWeight: "900",
+    lineHeight: 28,
   },
-  flowText: { color: "#527099", fontSize: 9, fontWeight: "900" },
+  stageSideArrowDisabled: {
+    color: "#B6C4D8",
+    backgroundColor: "#EEF3FA",
+  },
+  stageSideTitle: {
+    marginTop: 5,
+    color: "#527099",
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 13,
+    textAlign: "center",
+  },
+  stageSideSubtitle: {
+    marginTop: 3,
+    color: "#8BA0BD",
+    fontSize: 8,
+    fontWeight: "800",
+    lineHeight: 11,
+    textAlign: "center",
+  },
+  stageSideTextDisabled: {
+    color: "#B6C4D8",
+  },
+  stageCurrentCard: {
+    flex: 1,
+    minHeight: 88,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 21,
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(40,124,255,0.18)",
+  },
+  stageCurrentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  stageCurrentIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    overflow: "hidden",
+    textAlign: "center",
+    textAlignVertical: "center",
+    color: "#FFFFFF",
+    backgroundColor: "#287CFF",
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 28,
+  },
+  stageCurrentTitle: {
+    flexShrink: 1,
+    color: "#287CFF",
+    fontSize: 16,
+    fontWeight: "900",
+    lineHeight: 20,
+  },
+  stageCurrentSubtitle: {
+    marginTop: 8,
+    color: "#6E86A8",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 15,
+    textAlign: "center",
+  },
   section: { marginTop: 12, padding: 12, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.9)" },
   sectionTitle: { color: "#233B63", fontSize: 14, fontWeight: "900", marginBottom: 10 },
   cta: { minHeight: 48, marginTop: 14, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#1B63FF" },

@@ -14,5 +14,6 @@ __pycache__/
 venv/
 *.db
 *.sqlite
+*.log
 apps/api/app/uploads/*
 !apps/api/app/uploads/.gitkeep
