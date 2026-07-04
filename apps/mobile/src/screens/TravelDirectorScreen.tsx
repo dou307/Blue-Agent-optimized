@@ -68,8 +68,6 @@ const stageMeta: Array<{ id: Stage; title: string; subtitle: string }> = [
   { id: "review", title: "D5 回顾沉淀", subtitle: "记忆同步" },
 ];
 
-const stageFlow = ["Input", "Perception", "Topology", "Linkage", "Guardian"];
-
 function topologyStats(itinerary: Itinerary) {
   return itinerary.items.reduce(
     (stats, item) => {
@@ -811,15 +809,6 @@ export function TravelDirectorScreen() {
             </View>
           </View>
 
-          <View style={styles.flowRail}>
-            {stageFlow.map((item, index) => (
-              <View key={item} style={styles.flowStep}>
-                <Text style={styles.flowIndex}>{index + 1}</Text>
-                <Text style={styles.flowText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stageTabs}>
             {stageMeta.map((item, index) => (
               <Pressable key={item.id} style={[styles.stageTab, stage === item.id ? styles.stageTabActive : null]} onPress={() => setStage(item.id)}>
@@ -987,7 +976,7 @@ export function TravelDirectorScreen() {
             </View>
           ) : null}
 
-          {itinerary && stage !== "input" && stage !== "analyze" ? (
+          {itinerary && stage !== "input" && stage !== "analyze" && stage !== "compare" ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>时空拓扑看板</Text>
               <TopologySummary itinerary={itinerary} />
@@ -1287,29 +1276,6 @@ const styles = StyleSheet.create({
   stageTitle: { marginTop: 7, color: "#527099", fontSize: 11, fontWeight: "900" },
   stageTitleActive: { color: "#287CFF" },
   stageSub: { marginTop: 3, color: "#8BA0BD", fontSize: 9, fontWeight: "800" },
-  flowRail: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
-  flowStep: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.76)",
-  },
-  flowIndex: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    overflow: "hidden",
-    textAlign: "center",
-    textAlignVertical: "center",
-    color: "#FFFFFF",
-    backgroundColor: "#287CFF",
-    fontSize: 9,
-    fontWeight: "900",
-  },
-  flowText: { color: "#527099", fontSize: 9, fontWeight: "900" },
   section: { marginTop: 12, padding: 12, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.9)" },
   sectionTitle: { color: "#233B63", fontSize: 14, fontWeight: "900", marginBottom: 10 },
   cta: { minHeight: 48, marginTop: 14, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#1B63FF" },
