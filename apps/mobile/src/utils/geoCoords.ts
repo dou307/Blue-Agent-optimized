@@ -23,11 +23,20 @@ const CITY_CENTERS: Record<string, MapPoint> = {
   深圳: { lng: 114.0579, lat: 22.5431, icon: "🏙️", label: "深圳" },
   成都: { lng: 104.0665, lat: 30.5723, icon: "🐼", label: "成都" },
   杭州: { lng: 120.1551, lat: 30.2741, icon: "🌊", label: "杭州" },
+  天津: { lng: 117.2000, lat: 39.1333, icon: "🏙️", label: "天津" },
 };
 
 const POIS: PoiRecord[] = [
+  { keywords: ["杭州东站"], lng: 120.2120, lat: 30.2910, icon: "🚄" },
+  { keywords: ["天津站"], lng: 117.2110, lat: 39.1346, icon: "🚄" },
+  { keywords: ["天津西站"], lng: 117.1624, lat: 39.1646, icon: "🚄" },
+  { keywords: ["天津南站"], lng: 117.0600, lat: 39.0569, icon: "🚄" },
+  { keywords: ["南开大学八里台校区", "南开大学站", "南开大学"], lng: 117.1777, lat: 39.1032, icon: "🎓" },
+  { keywords: ["天津古文化街", "古文化街"], lng: 117.1964, lat: 39.1420, icon: "🏮" },
+  { keywords: ["五大道"], lng: 117.2029, lat: 39.1134, icon: "📸" },
   { keywords: ["故宫", "故宫博物院"], lng: 116.397026, lat: 39.918058, icon: "🏯" },
-  { keywords: ["首都机场", "机场", "航班"], lng: 116.584, lat: 40.080, icon: "✈️" },
+  { keywords: ["首都机场"], lng: 116.584, lat: 40.080, icon: "✈️" },
+  { keywords: ["机场", "航班"], lng: 116.584, lat: 40.080, icon: "✈️" },
   { keywords: ["高铁", "火车站", "车站"], lng: 116.378, lat: 39.865, icon: "🚄" },
   { keywords: ["西单"], lng: 116.373, lat: 39.913, icon: "🛍️" },
   { keywords: ["王府井", "烤鸭"], lng: 116.417, lat: 39.909, icon: "🦆" },
@@ -42,6 +51,23 @@ const POIS: PoiRecord[] = [
   { keywords: ["探索", "弹性"], lng: 102.832, lat: 24.8801, icon: "🎈" },
   { keywords: ["景点", "游览"], lng: 102.832, lat: 24.9001, icon: "📸" },
 ];
+
+const GENERIC_POI_KEYWORDS = new Set([
+  "机场",
+  "航班",
+  "高铁",
+  "火车站",
+  "车站",
+  "酒店",
+  "入住",
+  "午餐",
+  "餐饮",
+  "美食",
+  "探索",
+  "弹性",
+  "景点",
+  "游览",
+]);
 
 const CATEGORY_ICON: Record<ItineraryItem["category"], string> = {
   transport: "✈️",
@@ -61,6 +87,10 @@ function matchPoi(text: string) {
   return POIS.find((poi) => poi.keywords.some((keyword) => text.includes(keyword)));
 }
 
+function isGenericPoi(poi: PoiRecord) {
+  return poi.keywords.every((keyword) => GENERIC_POI_KEYWORDS.has(keyword));
+}
+
 export function resolveMapPoint(item: ItineraryItem, index: number, city: string): MapPoint {
   if (item.geo_lat != null && item.geo_lng != null) {
     return {
@@ -72,8 +102,9 @@ export function resolveMapPoint(item: ItineraryItem, index: number, city: string
   }
 
   const text = `${item.title} ${item.location}`;
+  const cityKey = findCity(text) ?? findCity(city) ?? "北京";
   const poi = matchPoi(text);
-  if (poi) {
+  if (poi && !isGenericPoi(poi)) {
     return {
       lng: poi.lng + index * 0.004,
       lat: poi.lat + index * 0.003,
@@ -82,7 +113,6 @@ export function resolveMapPoint(item: ItineraryItem, index: number, city: string
     };
   }
 
-  const cityKey = findCity(text) ?? findCity(city) ?? "北京";
   const center = CITY_CENTERS[cityKey] ?? CITY_CENTERS.北京;
   const angle = (index / 6) * Math.PI * 2;
   const radius = 0.03 + index * 0.008;
@@ -90,7 +120,7 @@ export function resolveMapPoint(item: ItineraryItem, index: number, city: string
   return {
     lng: center.lng + Math.cos(angle) * radius,
     lat: center.lat + Math.sin(angle) * radius,
-    icon: CATEGORY_ICON[item.category],
+    icon: poi?.icon ?? CATEGORY_ICON[item.category],
     label: item.title,
   };
 }
