@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Dimensions, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
 import { AgentStatus } from "../components/AgentStatus";
@@ -115,6 +115,58 @@ function confirmDanger(title: string, message: string, onConfirm: () => void) {
   ]);
 }
 
+function timeToMinutes(value: string) {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return 0;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function sortItineraryItems(items: ItineraryItem[]) {
+  return [...items].sort((left, right) => {
+    if (left.day !== right.day) return left.day - right.day;
+    return timeToMinutes(left.start_time) - timeToMinutes(right.start_time);
+  });
+}
+
+function encodeAmapParam(value: string) {
+  return encodeURIComponent(value.trim());
+}
+
+function inferAmapRouteType(item: ItineraryItem) {
+  const text = `${item.title} ${item.description}`.toLowerCase();
+  if (text.includes("步行") || text.includes("walk")) return 2;
+  if (text.includes("地铁") || text.includes("公交") || text.includes("metro") || text.includes("bus")) return 1;
+  return 0;
+}
+
+function buildAmapNavigateUrl(item: ItineraryItem, previous?: ItineraryItem | null) {
+  const appName = "BlueMap";
+  if (!previous) {
+    const name = encodeAmapParam(item.location || item.title);
+    if (item.geo_lat != null && item.geo_lng != null) {
+      return `amapuri://viewMap?sourceApplication=${appName}&poiname=${name}&lat=${item.geo_lat}&lon=${item.geo_lng}&dev=0`;
+    }
+    return `amapuri://poi?sourceApplication=${appName}&keywords=${name}&dev=0`;
+  }
+
+  const params = new URLSearchParams({
+    sourceApplication: appName,
+    sname: previous.location || previous.title,
+    dname: item.location || item.title,
+    dev: "0",
+    t: String(inferAmapRouteType(item)),
+  });
+  if (previous.geo_lat != null && previous.geo_lng != null) {
+    params.set("slat", String(previous.geo_lat));
+    params.set("slon", String(previous.geo_lng));
+  }
+  if (item.geo_lat != null && item.geo_lng != null) {
+    params.set("dlat", String(item.geo_lat));
+    params.set("dlon", String(item.geo_lng));
+  }
+  return `amapuri://route/plan/?${params.toString()}`;
+}
+
 export function TravelDirectorScreen() {
   const [stage, setStage] = useState<Stage>("input");
   const [message, setMessage] = useState(samplePrompt);
@@ -142,6 +194,7 @@ export function TravelDirectorScreen() {
   const [priceQuote, setPriceQuote] = useState<ItineraryPriceQuote | null>(null);
   const [weather, setWeather] = useState<ItineraryWeatherResponse | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [amapErrorVisible, setAmapErrorVisible] = useState(false);
   const [poiPickerVisible, setPoiPickerVisible] = useState(false);
   const [poiLoading, setPoiLoading] = useState(false);
   const [poiCandidates, setPoiCandidates] = useState<POICandidate[]>([]);
@@ -603,6 +656,19 @@ export function TravelDirectorScreen() {
     setNodeEditDraft(draftFromItem(item));
   }
 
+  async function handleNavigateToItem(item: ItineraryItem) {
+    if (!itinerary) return;
+    const ordered = sortItineraryItems(itinerary.items);
+    const index = ordered.findIndex((entry) => entry.id === item.id);
+    const previous = index > 0 ? ordered[index - 1] : null;
+    const url = buildAmapNavigateUrl(item, previous);
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setAmapErrorVisible(true);
+    }
+  }
+
   async function handleSaveNodeEdit() {
     if (!nodeEditDraft) return;
     setNodeSaving(true);
@@ -971,6 +1037,7 @@ export function TravelDirectorScreen() {
                 deletingItemId={deletingItemId}
                 itemWeather={itemWeatherMap}
                 onEdit={handleEditNode}
+                onNavigate={handleNavigateToItem}
                 onRecommendPOI={handleRecommendFromItem}
                 onMoveUp={(itemId) => handleMoveNode(itemId, "up")}
                 onMoveDown={(itemId) => handleMoveNode(itemId, "down")}
@@ -1009,7 +1076,25 @@ export function TravelDirectorScreen() {
                 onClose={() => setNodeEditDraft(null)}
                 onSave={handleSaveNodeEdit}
                 onDelete={handleDeleteNodeEdit}
+                onNavigate={
+                  nodeEditDraft
+                    ? () => {
+                        const item = itinerary.items.find((entry) => entry.id === nodeEditDraft.id);
+                        if (item) handleNavigateToItem(item);
+                      }
+                    : undefined
+                }
               />
+              <Modal visible={amapErrorVisible} transparent animationType="fade" onRequestClose={() => setAmapErrorVisible(false)}>
+                <View style={styles.errorBackdrop}>
+                  <View style={styles.errorCard}>
+                    <Pressable style={styles.errorClose} onPress={() => setAmapErrorVisible(false)}>
+                      <Text style={styles.errorCloseText}>×</Text>
+                    </Pressable>
+                    <Text style={styles.errorTitle}>未安装高德地图</Text>
+                  </View>
+                </View>
+              </Modal>
               <OptionPickerModal
                 visible={poiPickerVisible}
                 title={poiPickerTitle}
@@ -1107,6 +1192,35 @@ const styles = StyleSheet.create({
   ctaText: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
   secondaryCta: { minHeight: 42, marginTop: 12, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "#E7F3FF" },
   secondaryCtaText: { color: "#287CFF", fontWeight: "900" },
+  errorBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "rgba(35,59,99,0.35)",
+  },
+  errorCard: {
+    width: "100%",
+    maxWidth: 280,
+    minHeight: 116,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  errorClose: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EEF6FF",
+  },
+  errorCloseText: { color: "#527099", fontSize: 20, lineHeight: 22, fontWeight: "900" },
+  errorTitle: { color: "#233B63", fontSize: 16, fontWeight: "900" },
   optionCard: { marginTop: 10, padding: 12, borderRadius: 16, backgroundColor: "#F7FBFF", borderWidth: 1, borderColor: "transparent" },
   optionCardActive: { borderColor: "#287CFF", backgroundColor: "#FFFFFF" },
   optionHeader: { flexDirection: "row", justifyContent: "space-between", gap: 10 },

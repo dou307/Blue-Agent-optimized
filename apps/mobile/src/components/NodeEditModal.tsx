@@ -19,16 +19,34 @@ type Props = {
   onClose: () => void;
   onSave: () => void;
   onDelete?: () => void;
+  onNavigate?: () => void;
 };
 
-export function NodeEditModal({ visible, draft, dateLabel, saving, onChange, onClose, onSave, onDelete }: Props) {
+export function NodeEditModal({
+  visible,
+  draft,
+  dateLabel,
+  saving,
+  onChange,
+  onClose,
+  onSave,
+  onDelete,
+  onNavigate,
+}: Props) {
   if (!draft) return null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>编辑节点</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>编辑节点</Text>
+            {onNavigate ? (
+              <Pressable style={styles.navigateBtn} onPress={onNavigate}>
+                <Text style={styles.navigateText}>导航到这里去</Text>
+              </Pressable>
+            ) : null}
+          </View>
           {dateLabel ? <Text style={styles.dateBadge}>{dateLabel}</Text> : null}
           <Text style={styles.label}>标题</Text>
           <TextInput
@@ -106,7 +124,17 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: "#FFFFFF",
   },
-  title: { color: "#233B63", fontSize: 16, fontWeight: "900", marginBottom: 12 },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 },
+  title: { flex: 1, color: "#233B63", fontSize: 16, fontWeight: "900" },
+  navigateBtn: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EAF4FF",
+  },
+  navigateText: { color: "#287CFF", fontSize: 11, fontWeight: "900" },
   dateBadge: {
     alignSelf: "flex-start",
     marginBottom: 8,

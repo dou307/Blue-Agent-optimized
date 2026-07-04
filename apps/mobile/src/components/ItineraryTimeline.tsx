@@ -59,6 +59,7 @@ type Props = {
   onMoveUp: (itemId: string) => void;
   onMoveDown: (itemId: string) => void;
   onDelete: (itemId: string) => void;
+  onNavigate?: (item: ItineraryItem) => void;
   onRecommendPOI?: (item: ItineraryItem) => void;
 };
 
@@ -72,6 +73,7 @@ export function ItineraryTimeline({
   onMoveUp,
   onMoveDown,
   onDelete,
+  onNavigate,
   onRecommendPOI,
 }: Props) {
   const displayItems = [...items].sort((left, right) => {
@@ -156,6 +158,15 @@ export function ItineraryTimeline({
                 >
                   <Text style={styles.actionText}>↑</Text>
                 </Pressable>
+                {onNavigate ? (
+                  <Pressable
+                    style={[styles.actionBtn, styles.navigateBtn, busy || deleting ? styles.actionDisabled : null]}
+                    disabled={busy || deleting}
+                    onPress={() => onNavigate(item)}
+                  >
+                    <Text style={styles.navigateText}>↗</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   style={[
                     styles.actionBtn,
@@ -258,6 +269,8 @@ const styles = StyleSheet.create({
   actionText: { color: "#287CFF", fontSize: 12, fontWeight: "900" },
   deleteBtn: { backgroundColor: "#FFF1F0" },
   deleteText: { color: "#E55353" },
+  navigateBtn: { backgroundColor: "#EAF4FF" },
+  navigateText: { color: "#287CFF", fontSize: 15, fontWeight: "900" },
   pickBtn: { backgroundColor: "#E8FFF3" },
   pickText: { color: "#1A9D5C", fontSize: 11, fontWeight: "900" },
   deletingOverlay: {
