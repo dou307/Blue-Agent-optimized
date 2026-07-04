@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ItineraryItem } from "../types";
 import { formatItemSchedule } from "../utils/dateUtils";
@@ -19,6 +19,7 @@ type Props = {
   items: ItineraryItem[];
   startDate?: string | null;
   busy?: boolean;
+  deletingItemId?: string | null;
   onEdit: (item: ItineraryItem) => void;
   onMoveUp: (itemId: string) => void;
   onMoveDown: (itemId: string) => void;
@@ -30,6 +31,7 @@ export function ItineraryTimeline({
   items,
   startDate,
   busy,
+  deletingItemId,
   onEdit,
   onMoveUp,
   onMoveDown,
@@ -44,6 +46,7 @@ export function ItineraryTimeline({
         const visual = nodeVisual[resolveNodeType(item)] ?? nodeVisual.soft_task;
         const schedule = formatItemSchedule(startDate, item.day, item.start_time, item.end_time);
         const duration = formatDurationLabel(item.start_time, item.end_time);
+        const deleting = deletingItemId === item.id;
         return (
           <View key={item.id} style={[styles.row, { borderColor: visual.border }]}>
             <View style={[styles.dateCol, { backgroundColor: visual.border }]}>
@@ -51,7 +54,7 @@ export function ItineraryTimeline({
               <Text style={styles.dateText}>{schedule.split(" ")[0]}</Text>
               <Text style={styles.timeText}>{item.start_time}</Text>
             </View>
-            <Pressable style={styles.main} onPress={() => onEdit(item)}>
+            <Pressable style={styles.main} disabled={deleting} onPress={() => onEdit(item)}>
               <View style={styles.header}>
                 <Text style={styles.itemTitle}>{item.title}</Text>
                 <Text style={styles.badge}>{categoryLabel[item.category]}</Text>
@@ -72,34 +75,39 @@ export function ItineraryTimeline({
               {(item.category === "food" || item.category === "hotel") && onRecommendPOI ? (
                 <Pressable
                   style={[styles.actionBtn, styles.pickBtn, busy ? styles.actionDisabled : null]}
-                  disabled={busy}
+                  disabled={busy || deleting}
                   onPress={() => onRecommendPOI(item)}
                 >
                   <Text style={styles.pickText}>选</Text>
                 </Pressable>
               ) : null}
               <Pressable
-                style={[styles.actionBtn, index === 0 || busy ? styles.actionDisabled : null]}
-                disabled={index === 0 || busy}
+                style={[styles.actionBtn, index === 0 || busy || deleting ? styles.actionDisabled : null]}
+                disabled={index === 0 || busy || deleting}
                 onPress={() => onMoveUp(item.id)}
               >
                 <Text style={styles.actionText}>↑</Text>
               </Pressable>
               <Pressable
-                style={[styles.actionBtn, index === items.length - 1 || busy ? styles.actionDisabled : null]}
-                disabled={index === items.length - 1 || busy}
+                style={[styles.actionBtn, index === items.length - 1 || busy || deleting ? styles.actionDisabled : null]}
+                disabled={index === items.length - 1 || busy || deleting}
                 onPress={() => onMoveDown(item.id)}
               >
                 <Text style={styles.actionText}>↓</Text>
               </Pressable>
               <Pressable
-                style={[styles.actionBtn, styles.deleteBtn, busy ? styles.actionDisabled : null]}
-                disabled={busy || items.length <= 1}
+                style={[styles.actionBtn, styles.deleteBtn, busy || deleting ? styles.actionDisabled : null]}
+                disabled={busy || deleting || items.length <= 1}
                 onPress={() => onDelete(item.id)}
               >
                 <Text style={[styles.actionText, styles.deleteText]}>删</Text>
               </Pressable>
             </View>
+            {deleting ? (
+              <View pointerEvents="none" style={[styles.deletingOverlay, webDeletingOverlay]}>
+                <Text style={styles.deletingText}>删除中</Text>
+              </View>
+            ) : null}
           </View>
         );
       })}
@@ -119,6 +127,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "#FFFFFF",
     borderWidth: 1.5,
+    overflow: "hidden",
+    position: "relative",
   },
   dateCol: {
     width: 52,
@@ -163,4 +173,28 @@ const styles = StyleSheet.create({
   deleteText: { color: "#E55353" },
   pickBtn: { backgroundColor: "#E8FFF3" },
   pickText: { color: "#1A9D5C", fontSize: 11, fontWeight: "900" },
+  deletingOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(245, 248, 252, 0.82)",
+  },
+  deletingText: {
+    color: "#7A8798",
+    fontSize: 24,
+    fontWeight: "900",
+  },
 });
+
+const webDeletingOverlay =
+  Platform.OS === "web"
+    ? ({
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
+      } as any)
+    : null;

@@ -123,6 +123,7 @@ export function TravelDirectorScreen() {
   const [pageScrollEnabled, setPageScrollEnabled] = useState(true);
   const [nodeEditDraft, setNodeEditDraft] = useState<NodeEditDraft | null>(null);
   const [nodeSaving, setNodeSaving] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const pageScrollRef = useRef<ScrollView>(null);
   const mapTouchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
@@ -901,6 +902,7 @@ export function TravelDirectorScreen() {
                 items={itinerary.items}
                 startDate={itinerary.intent.start_date ?? structured.startDate}
                 busy={nodeSaving || poiLoading}
+                deletingItemId={deletingItemId}
                 onEdit={handleEditNode}
                 onRecommendPOI={handleRecommendFromItem}
                 onMoveUp={(itemId) => handleMoveNode(itemId, "up")}
@@ -909,6 +911,7 @@ export function TravelDirectorScreen() {
                   const item = itinerary.items.find((entry) => entry.id === itemId);
                   if (!item) return;
                   confirmDanger("确认删除", `确定删除「${item.title}」？`, async () => {
+                    setDeletingItemId(itemId);
                     setNodeSaving(true);
                     try {
                       const response = await deleteNode(itinerary.id, itemId);
@@ -917,6 +920,7 @@ export function TravelDirectorScreen() {
                     } catch (error) {
                       Alert.alert("删除失败", error instanceof Error ? error.message : "请稍后重试");
                     } finally {
+                      setDeletingItemId(null);
                       setNodeSaving(false);
                     }
                   });
