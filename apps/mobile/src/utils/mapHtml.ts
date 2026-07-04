@@ -128,8 +128,7 @@ export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], cente
     });
     window.__map = map;
 
-    AMap.plugin(['AMap.ToolBar', 'AMap.Scale'], function() {
-      map.addControl(new AMap.ToolBar({ position: { top: '48px', right: '12px' } }));
+    AMap.plugin(['AMap.Scale'], function() {
       map.addControl(new AMap.Scale());
     });
 
@@ -237,7 +236,7 @@ export function buildLeafletHtml(markers: MapMarkerPayload[], center: { lng: num
     const markers = ${markerJson};
     const center = ${centerJson};
     const displayMarkers = displayMarkersForCity(markers, center);
-    const map = L.map('map', { zoomControl: true, touchZoom: true, scrollWheelZoom: true, doubleClickZoom: true }).setView([center.lat, center.lng], 12);
+    const map = L.map('map', { zoomControl: false, touchZoom: true, scrollWheelZoom: true, doubleClickZoom: true }).setView([center.lat, center.lng], 12);
     window.__map = map;
     L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', {
       subdomains: ['1', '2', '3', '4'],
