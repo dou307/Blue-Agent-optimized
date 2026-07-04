@@ -434,3 +434,27 @@ export async function getPriceQuote(itineraryId: string) {
   const response = await fetch(`${API_BASE_URL}/itineraries/${itineraryId}/price-quote`);
   return parseResponse<import("../types").ItineraryPriceQuote>(response);
 }
+
+export async function getItineraryWeather(itineraryId: string) {
+  const response = await fetch(`${API_BASE_URL}/weather/itinerary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: USER_ID, itinerary_id: itineraryId }),
+  });
+  return parseResponse<import("../types").ItineraryWeatherResponse>(response);
+}
+
+export async function optimizeItineraryByWeather(itineraryId: string) {
+  const response = await fetch(`${API_BASE_URL}/weather/optimize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: USER_ID, itinerary_id: itineraryId }),
+  });
+  return parseResponse<{
+    itinerary: NonNullable<ChatResponse["itinerary"]>;
+    change_summary: string;
+    affected_item_ids: string[];
+    warnings: string[];
+    weather: import("../types").ItineraryWeatherResponse;
+  }>(response);
+}

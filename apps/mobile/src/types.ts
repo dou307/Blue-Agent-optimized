@@ -261,3 +261,31 @@ export type ItineraryPriceQuote = {
   duration_text: string;
   data_sources: string[];
 };
+
+export type ItemWeatherInfo = {
+  item_id: string;
+  source: string;
+  date?: string | null;
+  time?: string | null;
+  text: string;
+  temp?: number | null;
+  feels_like?: number | null;
+  pop?: number | null;
+  precip?: number | null;
+  wind_dir?: string | null;
+  wind_scale?: string | null;
+  daily_text?: string | null;
+  indices: string[];
+  risk_level: "low" | "medium" | "high";
+  risk_tags: string[];
+  advice: string;
+  label: string;
+};
+
+export type ItineraryWeatherResponse = {
+  available: boolean;
+  source: string;
+  summary: string;
+  item_weather: ItemWeatherInfo[];
+  warnings: string[];
+};

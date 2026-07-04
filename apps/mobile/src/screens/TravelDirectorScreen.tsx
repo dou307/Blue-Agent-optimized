@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
@@ -19,8 +19,10 @@ import {
   deleteNode,
   executeOrder,
   getGuardianStatus,
+  getItineraryWeather,
   getPriceQuote,
   getTripReview,
+  optimizeItineraryByWeather,
   prepareOrder,
   reorderNodes,
   requestReplan,
@@ -38,6 +40,7 @@ import {
   Itinerary,
   ItineraryItem,
   ItineraryPriceQuote,
+  ItineraryWeatherResponse,
   PlanComparison,
   PlanOption,
   AccommodationAreaCandidate,
@@ -137,6 +140,8 @@ export function TravelDirectorScreen() {
   const [review, setReview] = useState<TripReview | null>(null);
   const [analysis, setAnalysis] = useState<IntentAnalysis | null>(null);
   const [priceQuote, setPriceQuote] = useState<ItineraryPriceQuote | null>(null);
+  const [weather, setWeather] = useState<ItineraryWeatherResponse | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
   const [poiPickerVisible, setPoiPickerVisible] = useState(false);
   const [poiLoading, setPoiLoading] = useState(false);
   const [poiCandidates, setPoiCandidates] = useState<POICandidate[]>([]);
@@ -176,6 +181,41 @@ export function TravelDirectorScreen() {
       cancelled = true;
     };
   }, [itinerary?.id, itinerary?.version, itinerary?.items.length]);
+
+  useEffect(() => {
+    if (!itinerary?.id) {
+      setWeather(null);
+      return;
+    }
+    let cancelled = false;
+    setWeatherLoading(true);
+    getItineraryWeather(itinerary.id)
+      .then((response) => {
+        if (!cancelled) setWeather(response);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWeather({
+            available: false,
+            source: "qweather",
+            summary: "天气暂不可用，已按原行程展示。",
+            item_weather: [],
+            warnings: ["天气接口请求失败"],
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setWeatherLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [itinerary?.id, itinerary?.version, itinerary?.items.length]);
+
+  const itemWeatherMap = useMemo(() => {
+    if (!weather?.available) return {};
+    return Object.fromEntries(weather.item_weather.map((item) => [item.item_id, item]));
+  }, [weather]);
 
   useEffect(() => {
     const hints = parseTravelFromText(message);
@@ -634,6 +674,29 @@ export function TravelDirectorScreen() {
     }
   }
 
+  async function handleWeatherOptimize() {
+    if (!itinerary) return;
+    setWeatherLoading(true);
+    try {
+      const response = await optimizeItineraryByWeather(itinerary.id);
+      setWeather(response.weather);
+      if (!response.weather.available) {
+        Alert.alert("天气暂不可用", response.weather.summary);
+        return;
+      }
+      if (response.itinerary) await applyItineraryUpdate(response.itinerary);
+      const affected = response.affected_item_ids?.length ?? 0;
+      Alert.alert(
+        "天气优化完成",
+        `${response.change_summary || "已根据真实天气完成轻量优化。"}${affected ? `\n\n共联动 ${affected} 个节点。` : ""}`,
+      );
+    } catch (error) {
+      Alert.alert("天气优化失败", error instanceof Error ? error.message : "天气暂不可用，已按原行程展示。");
+    } finally {
+      setWeatherLoading(false);
+    }
+  }
+
   function handleMapInteraction(active: boolean) {
     if (mapTouchTimer.current) {
       clearTimeout(mapTouchTimer.current);
@@ -850,6 +913,9 @@ export function TravelDirectorScreen() {
                 <Pressable style={styles.quickPickBtn} disabled={loading || poiLoading || hotelAreaLoading} onPress={() => handleQuickRecommend("hotel")}>
                   <Text style={styles.quickPickText}>{hotelAreaLoading ? "分析住宿片区..." : "推荐酒店"}</Text>
                 </Pressable>
+                <Pressable style={styles.quickPickBtn} disabled={loading || weatherLoading} onPress={handleWeatherOptimize}>
+                  <Text style={styles.quickPickText}>{weatherLoading ? "同步天气..." : "天气优化"}</Text>
+                </Pressable>
               </View>
               {hotelAreaCandidates.length ? (
                 <View style={styles.hotelAreaPanel}>
@@ -903,6 +969,7 @@ export function TravelDirectorScreen() {
                 startDate={itinerary.intent.start_date ?? structured.startDate}
                 busy={nodeSaving || poiLoading}
                 deletingItemId={deletingItemId}
+                itemWeather={itemWeatherMap}
                 onEdit={handleEditNode}
                 onRecommendPOI={handleRecommendFromItem}
                 onMoveUp={(itemId) => handleMoveNode(itemId, "up")}

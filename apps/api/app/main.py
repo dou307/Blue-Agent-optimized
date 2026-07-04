@@ -39,6 +39,10 @@ from app.models.schemas import (
     ItineraryPriceQuote,
     RecommendAccommodationAreaRequest,
     RecommendAccommodationAreaResponse,
+    ItineraryWeatherRequest,
+    ItineraryWeatherResponse,
+    WeatherOptimizeRequest,
+    WeatherOptimizeResponse,
 )
 from app.agent.intent import intent_extractor
 from app.services.intent_analysis import intent_analysis_service
@@ -56,6 +60,7 @@ from app.services.accommodation_area_service import accommodation_area_service
 from app.services.recommendation_service import recommendation_service
 from app.services.speech import speech_service
 from app.services.store import store
+from app.services.weather_service import weather_service
 from app.tools.travel_tools import travel_tools
 
 settings = get_settings()
@@ -242,6 +247,30 @@ def get_price_quote(itinerary_id: str) -> ItineraryPriceQuote:
     if itinerary is None:
         raise HTTPException(status_code=404, detail="Itinerary not found")
     return price_engine.quote_itinerary(itinerary)
+
+
+@app.post("/weather/itinerary", response_model=ItineraryWeatherResponse)
+def get_itinerary_weather(request: ItineraryWeatherRequest) -> ItineraryWeatherResponse:
+    itinerary = store.get_itinerary(request.itinerary_id)
+    if itinerary is None:
+        raise HTTPException(status_code=404, detail="Itinerary not found")
+    return weather_service.itinerary_weather(itinerary)
+
+
+@app.post("/weather/optimize", response_model=WeatherOptimizeResponse)
+def optimize_itinerary_by_weather(request: WeatherOptimizeRequest) -> WeatherOptimizeResponse:
+    itinerary = store.get_itinerary(request.itinerary_id)
+    if itinerary is None:
+        raise HTTPException(status_code=404, detail="Itinerary not found")
+    weather = weather_service.itinerary_weather(itinerary)
+    try:
+        return itinerary_refiner.weather_optimize(
+            request,
+            weather,
+            weather_service.weather_context_for_llm(weather),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/itineraries/{itinerary_id}")

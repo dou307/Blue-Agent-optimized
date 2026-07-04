@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     api_base_url: str = "http://localhost:8000"
     amap_api_key: str | None = None
     weather_api_key: str | None = None
+    qweather_api_key: str | None = None
+    qweather_api_host: str = "https://devapi.qweather.com"
     speech_provider: str = "auto"  # baidu | dashscope | auto
     baidu_asr_app_id: str | None = None
     baidu_asr_api_key: str | None = None

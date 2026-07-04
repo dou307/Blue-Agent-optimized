@@ -310,6 +310,48 @@ class ItineraryPriceQuote(BaseModel):
     data_sources: list[str] = Field(default_factory=list)
 
 
+class ItemWeatherInfo(BaseModel):
+    item_id: str
+    source: str = "qweather"
+    date: str | None = None
+    time: str | None = None
+    text: str = ""
+    temp: int | None = None
+    feels_like: int | None = None
+    pop: int | None = None
+    precip: float | None = None
+    wind_dir: str | None = None
+    wind_scale: str | None = None
+    daily_text: str | None = None
+    indices: list[str] = Field(default_factory=list)
+    risk_level: Literal["low", "medium", "high"] = "low"
+    risk_tags: list[str] = Field(default_factory=list)
+    advice: str = ""
+    label: str = ""
+
+
+class ItineraryWeatherRequest(BaseModel):
+    user_id: str = "demo-user"
+    itinerary_id: str
+
+
+class ItineraryWeatherResponse(BaseModel):
+    available: bool
+    source: str = "qweather"
+    summary: str
+    item_weather: list[ItemWeatherInfo] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class WeatherOptimizeRequest(BaseModel):
+    user_id: str = "demo-user"
+    itinerary_id: str
+
+
+class WeatherOptimizeResponse(SmartUpdateNodeResponse):
+    weather: ItineraryWeatherResponse
+
+
 class UploadKind(str, Enum):
     pdf = "pdf"
     image = "image"

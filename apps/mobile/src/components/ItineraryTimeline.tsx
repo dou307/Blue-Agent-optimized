@@ -1,6 +1,6 @@
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { ItineraryItem } from "../types";
+import { ItemWeatherInfo, ItineraryItem } from "../types";
 import { formatItemSchedule } from "../utils/dateUtils";
 import { formatDurationLabel } from "../utils/durationUtils";
 import { nodeVisual, resolveNodeType } from "../utils/nodeUtils";
@@ -20,6 +20,7 @@ type Props = {
   startDate?: string | null;
   busy?: boolean;
   deletingItemId?: string | null;
+  itemWeather?: Record<string, ItemWeatherInfo>;
   onEdit: (item: ItineraryItem) => void;
   onMoveUp: (itemId: string) => void;
   onMoveDown: (itemId: string) => void;
@@ -32,6 +33,7 @@ export function ItineraryTimeline({
   startDate,
   busy,
   deletingItemId,
+  itemWeather,
   onEdit,
   onMoveUp,
   onMoveDown,
@@ -47,6 +49,7 @@ export function ItineraryTimeline({
         const schedule = formatItemSchedule(startDate, item.day, item.start_time, item.end_time);
         const duration = formatDurationLabel(item.start_time, item.end_time);
         const deleting = deletingItemId === item.id;
+        const weather = itemWeather?.[item.id];
         return (
           <View key={item.id} style={[styles.row, { borderColor: visual.border }]}>
             <View style={[styles.dateCol, { backgroundColor: visual.border }]}>
@@ -67,6 +70,15 @@ export function ItineraryTimeline({
               <Text style={styles.description} numberOfLines={2}>
                 {item.description}
               </Text>
+              {weather ? (
+                <View style={[styles.weatherPill, weather.risk_level !== "low" ? styles.weatherPillWarn : null]}>
+                  <Text style={[styles.weatherText, weather.risk_level !== "low" ? styles.weatherTextWarn : null]} numberOfLines={2}>
+                    天气：{weather.label}
+                    {weather.risk_tags.length ? ` · ${weather.risk_tags.join("、")}` : ""}
+                    {weather.advice ? ` · ${weather.advice}` : ""}
+                  </Text>
+                </View>
+              ) : null}
               {item.estimated_cost ? (
                 <Text style={styles.cost}>预估 ¥{item.estimated_cost}</Text>
               ) : null}
@@ -157,6 +169,16 @@ const styles = StyleSheet.create({
   meta: { marginTop: 4, color: "#527099", fontSize: 10, fontWeight: "800" },
   location: { marginTop: 3, color: "#287CFF", fontSize: 10, fontWeight: "800" },
   description: { marginTop: 3, color: "#7085A2", fontSize: 10, lineHeight: 15, fontWeight: "700" },
+  weatherPill: {
+    marginTop: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 9,
+    backgroundColor: "#F2FFF9",
+  },
+  weatherPillWarn: { backgroundColor: "#FFF7ED" },
+  weatherText: { color: "#1A9D5C", fontSize: 10, lineHeight: 14, fontWeight: "800" },
+  weatherTextWarn: { color: "#F97316" },
   cost: { marginTop: 4, color: "#1B63FF", fontSize: 10, fontWeight: "900" },
   actions: { gap: 4, justifyContent: "center" },
   actionBtn: {

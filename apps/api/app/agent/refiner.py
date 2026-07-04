@@ -17,6 +17,9 @@ from app.models.schemas import (
     SmartUpdateNodeResponse,
     SmartUpdatePlan,
     UpdateNodeRequest,
+    WeatherOptimizeRequest,
+    WeatherOptimizeResponse,
+    ItineraryWeatherResponse,
 )
 from app.services.llm import llm_service
 from app.services.store import store
@@ -259,6 +262,64 @@ class ItineraryRefiner:
             warnings=list(dict.fromkeys([*updated.warnings, *plan.warnings])),
         )
 
+    def weather_optimize(
+        self,
+        request: WeatherOptimizeRequest,
+        weather: ItineraryWeatherResponse,
+        weather_context: list[dict[str, Any]],
+    ) -> WeatherOptimizeResponse:
+        current = store.get_itinerary(request.itinerary_id)
+        if current is None:
+            raise ValueError("Itinerary not found")
+        if not weather.available or not weather_context:
+            return WeatherOptimizeResponse(
+                itinerary=current,
+                change_summary=weather.summary,
+                affected_item_ids=[],
+                warnings=weather.warnings,
+                weather=weather,
+            )
+
+        instruction = f"""
+基于真实和风天气结果，对行程做天气友好的轻量优化。只关注户外景点和步行/交通节点。
+
+真实天气上下文：
+{json.dumps(weather_context, ensure_ascii=False, indent=2)}
+
+优化目标：
+1. 优先把有降水、高温、风力等关注标签的户外节点调整到更舒适时段
+2. 对交通/步行节点预留更充分缓冲
+3. meeting/hotel 等硬锚点尽量保持稳定
+4. 不新增节点、不删除节点，只调整既有节点顺序、时间和描述
+5. 所有表达保持正向，例如“建议室内备选”“建议提前到上午”，不要输出“不推荐/不建议/过远/不可控”
+6. 如果无需调整，也要返回完整 items，并在 change_summary 说明“当前行程与天气匹配度较好”
+"""
+        plan = self._rebalance_items_with_llm(
+            current,
+            current.items,
+            instruction,
+            weather_context={"source": "qweather", "items": weather_context},
+        )
+        if plan is None:
+            return WeatherOptimizeResponse(
+                itinerary=current,
+                change_summary="已同步真实天气，当前行程保持原方案展示。",
+                affected_item_ids=[],
+                warnings=weather.warnings,
+                weather=weather,
+            )
+
+        updated = self._apply_weather_plan(current, plan)
+        updated.explanation = f"{current.explanation}\n\n天气优化：{plan.change_summary}"
+        store.save_itinerary(updated)
+        return WeatherOptimizeResponse(
+            itinerary=updated,
+            change_summary=plan.change_summary,
+            affected_item_ids=plan.affected_item_ids,
+            warnings=list(dict.fromkeys([*updated.warnings, *plan.warnings, *weather.warnings])),
+            weather=weather,
+        )
+
     def _describe_changes(self, target: ItineraryItem, request: SmartUpdateNodeRequest) -> list[str]:
         lines: list[str] = []
         if request.title is not None and request.title.strip() and request.title.strip() != target.title:
@@ -361,6 +422,7 @@ class ItineraryRefiner:
         current: Itinerary,
         items: list[ItineraryItem],
         instruction: str,
+        weather_context: dict[str, Any] | None = None,
     ) -> SmartUpdatePlan | None:
         if not llm_service.configured:
             return None
@@ -369,7 +431,7 @@ class ItineraryRefiner:
         date_range = None
         if intent.start_date and intent.end_date:
             date_range = f"{intent.start_date}~{intent.end_date}"
-        weather = travel_tools.get_weather(intent.destination or "", date_range)
+        weather = weather_context or travel_tools.get_weather(intent.destination or "", date_range)
 
         items_payload = [
             {
@@ -409,7 +471,8 @@ class ItineraryRefiner:
 4. change_summary 用中文简述调整（2~4 句）
 5. affected_item_ids 列出所有发生变化的节点 id
 6. warnings 列出风险，没有则空数组
-7. 只返回 JSON，符合 SmartUpdatePlan schema
+7. 输出保持正向表达，不要使用“不推荐/不建议/过远/不可控”等负向措辞
+8. 只返回 JSON，符合 SmartUpdatePlan schema
 """
         fallback = SmartUpdatePlan(items=[], change_summary="", affected_item_ids=[], warnings=[])
         plan = llm_service.structured(prompt, SmartUpdatePlan, fallback)
@@ -457,6 +520,34 @@ class ItineraryRefiner:
         updated.items = [item_map[item_id] for item_id in order if item_id in item_map]
         updated.version = current.version + 1
         updated.explanation = f"{current.explanation}\n\n智能联动：{plan.change_summary}"
+        updated.warnings = list(dict.fromkeys([*updated.warnings, *plan.warnings]))
+        return updated
+
+    def _apply_weather_plan(self, current: Itinerary, plan: SmartUpdatePlan) -> Itinerary:
+        updated = deepcopy(current)
+        item_map = {item.id: item for item in updated.items}
+        for planned in plan.items:
+            existing = item_map.get(planned.id)
+            if existing is None:
+                continue
+            merged = existing.model_copy(
+                update={
+                    "day": planned.day,
+                    "start_time": planned.start_time,
+                    "end_time": planned.end_time,
+                    "title": planned.title,
+                    "location": planned.location,
+                    "category": planned.category,
+                    "description": planned.description,
+                    "geo_lat": planned.geo_lat if planned.geo_lat is not None else existing.geo_lat,
+                    "geo_lng": planned.geo_lng if planned.geo_lng is not None else existing.geo_lng,
+                    "risk_flags": list(dict.fromkeys([*existing.risk_flags, "真实天气优化"])),
+                }
+            )
+            item_map[planned.id] = apply_node_metadata(merged)
+
+        updated.items = [item_map[item.id] for item in plan.items if item.id in item_map]
+        updated.version = current.version + 1
         updated.warnings = list(dict.fromkeys([*updated.warnings, *plan.warnings]))
         return updated
 
