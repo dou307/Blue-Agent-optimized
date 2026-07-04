@@ -5,6 +5,7 @@ import { ItemWeatherInfo, ItineraryItem } from "../types";
 import { formatItemDateLabel, formatItemSchedule } from "../utils/dateUtils";
 import { formatDurationLabel } from "../utils/durationUtils";
 import { nodeVisual, resolveNodeType } from "../utils/nodeUtils";
+import { riskTextForItem } from "../utils/riskUtils";
 
 const categoryLabel: Record<ItineraryItem["category"], string> = {
   transport: "交通",
@@ -47,15 +48,6 @@ function buildDayWeatherSummary(
     advice: riskTags.length ? `${riskTags.join("、")} · ${advice}` : advice,
     hasRisk: weatherItems.some((item) => item.risk_level !== "low"),
   };
-}
-
-function riskTextForItem(item: ItineraryItem, weather?: ItemWeatherInfo) {
-  const risks = [
-    ...item.risk_flags,
-    ...(weather && weather.risk_level !== "low" ? [weather.advice || weather.label] : []),
-  ].filter(Boolean);
-  if (item.category === "alert" && !risks.length) risks.push(item.description || "行程存在风险提醒");
-  return risks.join("；");
 }
 
 type Props = {

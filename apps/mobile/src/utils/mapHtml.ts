@@ -3,6 +3,7 @@ import { formatItemDateLabel, formatItemSchedule } from "./dateUtils";
 import { formatDurationLabel, formatTimeRange } from "./durationUtils";
 import { resolveMapPoint } from "./geoCoords";
 import { isEditableNode, resolveNodeType } from "./nodeUtils";
+import { riskLevelForItem, riskTextForItem } from "./riskUtils";
 
 export type MapMarkerPayload = {
   id: string;
@@ -345,18 +346,8 @@ export function buildMapMarkers(
     const point = resolveMapPoint(item, index, city);
     const nodeType = resolveNodeType(item);
     const weather = itemWeather?.[item.id];
-    const riskLevel =
-      item.category === "alert" || weather?.risk_level === "high"
-        ? "high"
-        : item.risk_flags.length || weather?.risk_level === "medium"
-          ? "medium"
-          : "low";
-    const riskText = [
-      ...item.risk_flags,
-      ...(weather && weather.risk_level !== "low" ? [weather.advice || weather.label] : []),
-    ]
-      .filter(Boolean)
-      .join("；");
+    const riskLevel = riskLevelForItem(item, weather);
+    const riskText = riskTextForItem(item, weather);
     return {
       id: item.id,
       index: index + 1,
