@@ -273,10 +273,11 @@ export function IntentInputPanel({
 
   function onDateValueChange(date: Date) {
     if (!dateTarget) return;
-    updateField(dateTarget, toIsoDate(date));
-  }
-
-  function closeDatePicker() {
+    const nextDate = toIsoDate(date);
+    updateField(dateTarget, nextDate);
+    if (dateTarget === "startDate" && structured.endDate && structured.endDate < nextDate) {
+      updateField("endDate", nextDate);
+    }
     setDateTarget(null);
   }
 
@@ -448,14 +449,6 @@ export function IntentInputPanel({
 
       {dateTarget ? (
         <View style={styles.calendarWrap}>
-          <View style={styles.calendarHead}>
-            <Text style={styles.dateModalTitle}>
-              选择{dateTarget === "startDate" ? "出发" : "结束"}日期
-            </Text>
-            <Pressable onPress={closeDatePicker}>
-              <Text style={styles.dateModalDone}>完成</Text>
-            </Pressable>
-          </View>
           <InlineCalendar
             month={calendarMonth}
             selectedDate={activePickerDate}
@@ -704,10 +697,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     padding: 12,
   },
-  calendarHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  dateModalTitle: { color: "#233B63", fontSize: 15, fontWeight: "900" },
-  dateModalDone: { color: "#287CFF", fontSize: 13, fontWeight: "900" },
-  calendar: { marginTop: 12, gap: 10 },
+  calendar: { gap: 10 },
   calendarNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   calendarNavBtn: {
     width: 34,
