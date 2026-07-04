@@ -86,6 +86,18 @@ function topologyStats(itinerary: Itinerary) {
   );
 }
 
+function describePriceSources(sources: string[]) {
+  const labels: Record<string, string> = {
+    amap: "路线参考高德地图",
+    estimate: "费用含估算",
+  };
+  const mapped = sources.length ? sources.map((source) => labels[source] ?? source) : ["费用含估算"];
+  if (!mapped.includes("费用含估算") && !mapped.includes("餐饮/住宿含估算")) {
+    mapped.push("餐饮/住宿含估算");
+  }
+  return Array.from(new Set(mapped)).join(" · ");
+}
+
 export function TravelDirectorScreen() {
   const [stage, setStage] = useState<Stage>("input");
   const [message, setMessage] = useState(samplePrompt);
@@ -819,7 +831,7 @@ export function TravelDirectorScreen() {
                     <Text style={styles.priceMetric}>住宿 ¥{priceQuote.hotel}</Text>
                   </View>
                   <Text style={styles.priceSource}>
-                    路线来源：{priceQuote.data_sources.join("、") || "估算"} · 市内耗时 {priceQuote.duration_text}
+                    {describePriceSources(priceQuote.data_sources)} · 市内耗时 {priceQuote.duration_text}
                   </Text>
                 </View>
               ) : null}

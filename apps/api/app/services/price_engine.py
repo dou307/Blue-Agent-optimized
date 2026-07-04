@@ -4,6 +4,19 @@ from app.models.schemas import Itinerary, ItineraryPriceQuote, PriceBreakdownIte
 from app.services.amap_service import amap_service
 
 
+def describe_price_sources(data_sources: list[str]) -> str:
+    labels = {
+        "amap": "路线参考高德地图",
+        "estimate": "费用含估算",
+    }
+    if not data_sources:
+        return "费用含估算"
+    mapped = [labels.get(source, source) for source in data_sources]
+    if "费用含估算" not in mapped:
+        mapped.append("餐饮/住宿含估算")
+    return " · ".join(dict.fromkeys(mapped))
+
+
 class PriceEngine:
     DEFAULT_FOOD = 100
     DEFAULT_HOTEL = 380
@@ -92,7 +105,7 @@ class PriceEngine:
         return TravelQuote(
             flight=transport_item.title if transport_item else "交通费用按高德路线估算",
             hotel=hotel_item.title if hotel_item else f"{itinerary.intent.destination}酒店待选定",
-            local_transport=f"市内交通 ¥{price.transport}（来源：{','.join(price.data_sources)}）",
+            local_transport=f"市内交通 ¥{price.transport}（{describe_price_sources(price.data_sources)}）",
             total_price=price.total,
             duration_text=price.duration_text,
             comfort_score=90 if strategy == "balanced" else 82 if strategy == "fastest" else 76,

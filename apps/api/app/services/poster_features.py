@@ -24,7 +24,7 @@ from app.models.schemas import (
     TravelRequestBundle,
     TripReview,
 )
-from app.services.price_engine import price_engine
+from app.services.price_engine import describe_price_sources, price_engine
 from app.services.store import store
 
 
@@ -122,7 +122,7 @@ class PlanComparisonService:
         )
         quote = price_engine.to_travel_quote(itinerary, adjusted, strategy)
         quote = quote.model_copy(update={"comfort_score": comfort, "risk_level": risk})
-        source_note = "、".join(adjusted.data_sources) if adjusted.data_sources else "估算"
+        source_note = describe_price_sources(adjusted.data_sources)
         risks = ["高峰时段交通拥堵"] if risk == "medium" else ["需提前完成景点预约"]
         return PlanOption(
             title=title,
@@ -132,7 +132,7 @@ class PlanComparisonService:
             risks=risks,
             recommendation=(
                 f"{title}：交通 ¥{adjusted.transport}、餐饮 ¥{adjusted.food}、住宿 ¥{adjusted.hotel}，"
-                f"总价 ¥{adjusted.total}（来源：{source_note}）。"
+                f"总价 ¥{adjusted.total}（{source_note}）。"
             ),
             itinerary=itinerary,
         )
