@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 
 import { Itinerary, ItineraryItem } from "../types";
@@ -42,6 +42,12 @@ export function MapTopologyBoard({
     }
     return buildLeafletHtml(markers, center);
   }, [amapKey, items, mapCity, startDate, itinerary.intent.start_date]);
+
+  const webMapUrl = useMemo(() => {
+    const markers = buildMapMarkers(items, mapCity, startDate ?? itinerary.intent.start_date);
+    const first = markers[0] ?? { lng: resolveCityCenter(mapCity).lng, lat: resolveCityCenter(mapCity).lat, title: mapCity };
+    return `https://uri.amap.com/marker?position=${first.lng},${first.lat}&name=${encodeURIComponent(first.title)}`;
+  }, [items, mapCity, startDate, itinerary.intent.start_date]);
 
   function injectMapCommand(script: string) {
     webRef.current?.injectJavaScript(`${script}; true;`);
@@ -96,39 +102,51 @@ export function MapTopologyBoard({
         onTouchEnd={() => onMapInteractionChange?.(false)}
         onTouchCancel={() => onMapInteractionChange?.(false)}
       >
-        <WebView
-          ref={webRef}
-          key={`map-${itinerary.id}`}
-          originWhitelist={["*"]}
-          source={{ html }}
-          style={styles.map}
-          scrollEnabled={false}
-          nestedScrollEnabled
-          overScrollMode="never"
-          bounces={false}
-          javaScriptEnabled
-          domStorageEnabled
-          androidLayerType="hardware"
-          allowsInlineMediaPlayback
-          onMessage={handleMessage}
-          setSupportMultipleWindows={false}
-        />
+        {Platform.OS === "web" ? (
+          <iframe
+            key={`map-web-${itinerary.id}`}
+            title="行程地图"
+            srcDoc={html}
+            src={webMapUrl}
+            style={webIframeStyle}
+          />
+        ) : (
+          <WebView
+            ref={webRef}
+            key={`map-${itinerary.id}`}
+            originWhitelist={["*"]}
+            source={{ html }}
+            style={styles.map}
+            scrollEnabled={false}
+            nestedScrollEnabled
+            overScrollMode="never"
+            bounces={false}
+            javaScriptEnabled
+            domStorageEnabled
+            androidLayerType="hardware"
+            allowsInlineMediaPlayback
+            onMessage={handleMessage}
+            setSupportMultipleWindows={false}
+          />
+        )}
 
         <View style={styles.mapBadge}>
           <Text style={styles.mapBadgeText}>{amapKey ? "高德地图" : "OpenStreetMap"}</Text>
         </View>
 
-        <View style={styles.zoomBar}>
-          <Pressable style={styles.zoomBtn} onPress={() => injectMapCommand("window.mapApi.zoomIn()")}>
-            <Text style={styles.zoomText}>＋</Text>
-          </Pressable>
-          <Pressable style={styles.zoomBtn} onPress={() => injectMapCommand("window.mapApi.zoomOut()")}>
-            <Text style={styles.zoomText}>－</Text>
-          </Pressable>
-          <Pressable style={styles.zoomBtn} onPress={() => injectMapCommand("window.mapApi.fitView()")}>
-            <Text style={styles.fitText}>全览</Text>
-          </Pressable>
-        </View>
+        {Platform.OS === "web" ? null : (
+          <View style={styles.zoomBar}>
+            <Pressable style={styles.zoomBtn} onPress={() => injectMapCommand("window.mapApi.zoomIn()")}>
+              <Text style={styles.zoomText}>＋</Text>
+            </Pressable>
+            <Pressable style={styles.zoomBtn} onPress={() => injectMapCommand("window.mapApi.zoomOut()")}>
+              <Text style={styles.zoomText}>－</Text>
+            </Pressable>
+            <Pressable style={styles.zoomBtn} onPress={() => injectMapCommand("window.mapApi.fitView()")}>
+              <Text style={styles.fitText}>全览</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
@@ -151,6 +169,13 @@ export function MapTopologyBoard({
     </View>
   );
 }
+
+const webIframeStyle = {
+  width: "100%",
+  height: "100%",
+  border: "0",
+  display: "block",
+} as const;
 
 const styles = StyleSheet.create({
   wrap: { gap: 10 },

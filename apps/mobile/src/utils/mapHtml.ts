@@ -24,6 +24,13 @@ export type MapMarkerPayload = {
 };
 
 const MAP_BOOT = `
+  if (!window.ReactNativeWebView) {
+    window.ReactNativeWebView = {
+      postMessage: function(message) {
+        window.parent && window.parent.postMessage({ source: 'map-topology', payload: message }, '*');
+      }
+    };
+  }
   window.mapApi = {
     zoomIn: function() { if (window.__map) window.__map.zoomIn(); },
     zoomOut: function() { if (window.__map) window.__map.zoomOut(); },
