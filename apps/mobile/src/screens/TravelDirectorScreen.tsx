@@ -67,7 +67,7 @@ const stageMeta: Array<{ id: Stage; title: string; subtitle: string }> = [
   { id: "compare", title: "D2 视觉转译", subtitle: "拓扑方案" },
   { id: "order", title: "D3 跨端执行", subtitle: "参数化跳转" },
   { id: "guardian", title: "D4 动态微调", subtitle: "异常重规划" },
-  { id: "widget", title: "D4 桌面组件", subtitle: "下一站卡片" },
+  { id: "widget", title: "D4 查看最终结果", subtitle: "成果汇总" },
   { id: "review", title: "D5 回顾沉淀", subtitle: "记忆同步" },
 ];
 
@@ -1005,7 +1005,7 @@ export function TravelDirectorScreen() {
               ) : null}
               {itinerary ? (
                 <Pressable style={styles.secondaryCta} onPress={() => setStage("widget")}>
-                  <Text style={styles.secondaryCtaText}>查看桌面组件预览</Text>
+                  <Text style={styles.secondaryCtaText}>查看最终结果</Text>
                 </Pressable>
               ) : null}
               <Pressable style={styles.secondaryCta} onPress={handleGuardian} disabled={loading}>
@@ -1033,7 +1033,7 @@ export function TravelDirectorScreen() {
 
           {stage === "widget" ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>桌面 Widget · 下一站卡片</Text>
+              <Text style={styles.sectionTitle}>查看最终结果</Text>
               {itinerary ? (
                 <WidgetPreview
                   itinerary={itinerary}
@@ -1044,9 +1044,6 @@ export function TravelDirectorScreen() {
               ) : (
                 <Text style={styles.summary}>生成行程后可预览桌面组件。</Text>
               )}
-              <Pressable style={styles.secondaryCta} onPress={() => setStage("guardian")}>
-                <Text style={styles.secondaryCtaText}>返回同步状态</Text>
-              </Pressable>
             </View>
           ) : null}
 
@@ -1277,13 +1274,6 @@ function WidgetPreview({
   const riskText = nextItem ? riskTextForItem(nextItem, weather) : "";
   const calendarSync = syncResult?.items.find((item) => item.target === "calendar");
   const mapSync = syncResult?.items.find((item) => item.target === "map");
-  const widgetSync = syncResult?.items.find((item) => item.target === "widget");
-  const laterItems = nextItem
-    ? sortItineraryItems(itinerary.items)
-        .filter((item) => item.category !== "alert")
-        .filter((item) => item.id !== nextItem.id)
-        .slice(0, 2)
-    : [];
 
   if (!nextItem) {
     return <Text style={styles.summary}>暂无可展示的下一站节点。</Text>;
@@ -1293,8 +1283,8 @@ function WidgetPreview({
     <View style={styles.widgetWrap}>
       <View style={styles.widgetShellLarge}>
         <View style={styles.widgetTopRow}>
-          <Text style={styles.widgetAppName}>蓝V出行</Text>
-          <Text style={styles.widgetStatus}>{syncResult ? "已同步" : "预览"}</Text>
+          <Text style={styles.widgetAppName}>蓝V出行 · 桌面组件</Text>
+          <Text style={styles.widgetStatus}>{syncResult ? "数据已更新" : "预览"}</Text>
         </View>
         <Text style={styles.widgetNextLabel}>下一站</Text>
         <Text style={styles.widgetTitle} numberOfLines={2}>{nextItem.title}</Text>
@@ -1320,27 +1310,14 @@ function WidgetPreview({
           <Text style={styles.widgetSyncChip}>{calendarSync ? "日历 OK" : "日历待同步"}</Text>
           <Text style={styles.widgetSyncChip}>{mapSync ? "地图 OK" : "地图待同步"}</Text>
         </View>
-      </View>
-
-      <View style={styles.widgetShellSmall}>
-        <View style={styles.widgetSmallIcon}>
-          <Text style={styles.widgetSmallIconText}>↗</Text>
+        <View style={styles.widgetActionRow}>
+          <Pressable
+            style={styles.widgetAddButton}
+            onPress={() => Alert.alert("添加至桌面", "当前为桌面组件预览，接入系统桌面组件能力后可添加到手机桌面。")}
+          >
+            <Text style={styles.widgetAddButtonText}>添加至桌面</Text>
+          </Pressable>
         </View>
-        <View style={styles.flex}>
-          <Text style={styles.widgetSmallLabel}>下一站</Text>
-          <Text style={styles.widgetSmallTitle} numberOfLines={1}>{nextItem.title}</Text>
-          <Text style={styles.widgetSmallMeta} numberOfLines={1}>{nextItem.start_time} · {nextItem.location}</Text>
-        </View>
-      </View>
-
-      <View style={styles.widgetPanel}>
-        <Text style={styles.panelTitle}>组件数据源</Text>
-        <Text style={styles.summary}>{widgetSync?.detail ?? "当前为应用内桌面组件预览，执行同步后会展示系统同步状态。"}</Text>
-        {laterItems.map((item) => (
-          <Text key={item.id} style={styles.widgetQueueItem}>
-            {item.start_time} · {item.title}
-          </Text>
-        ))}
       </View>
     </View>
   );
@@ -1566,6 +1543,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
   },
+  widgetActionRow: { marginTop: 14, flexDirection: "row", justifyContent: "flex-end" },
+  widgetAddButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+  },
+  widgetAddButtonText: { color: "#1B63FF", fontSize: 12, fontWeight: "900" },
   widgetShellSmall: {
     minHeight: 78,
     flexDirection: "row",
