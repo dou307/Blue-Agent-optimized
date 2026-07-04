@@ -976,7 +976,7 @@ export function TravelDirectorScreen() {
             </View>
           ) : null}
 
-          {itinerary && stage !== "input" && stage !== "analyze" && stage !== "compare" ? (
+          {itinerary && stage !== "input" && stage !== "analyze" && stage !== "compare" && stage !== "order" ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>时空拓扑看板</Text>
               <TopologySummary itinerary={itinerary} />
