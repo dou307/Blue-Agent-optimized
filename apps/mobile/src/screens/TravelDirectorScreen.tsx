@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
 import { AgentStatus } from "../components/AgentStatus";
@@ -96,6 +96,20 @@ function describePriceSources(sources: string[]) {
     mapped.push("餐饮/住宿含估算");
   }
   return Array.from(new Set(mapped)).join(" · ");
+}
+
+function confirmDanger(title: string, message: string, onConfirm: () => void) {
+  if (Platform.OS === "web" && typeof window !== "undefined" && typeof window.confirm === "function") {
+    if (window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+    return;
+  }
+
+  Alert.alert(title, message, [
+    { text: "取消", style: "cancel" },
+    { text: "删除", style: "destructive", onPress: onConfirm },
+  ]);
 }
 
 export function TravelDirectorScreen() {
@@ -578,26 +592,19 @@ export function TravelDirectorScreen() {
   async function handleDeleteNodeEdit() {
     if (!nodeEditDraft || !itinerary) return;
     const title = nodeEditDraft.title.trim();
-    Alert.alert("确认删除", `确定删除「${title}」？Agent 将联动调整剩余行程。`, [
-      { text: "取消", style: "cancel" },
-      {
-        text: "删除",
-        style: "destructive",
-        onPress: async () => {
-          setNodeSaving(true);
-          try {
-            const response = await deleteNode(itinerary.id, nodeEditDraft.id);
-            if (response.itinerary) await applyItineraryUpdate(response.itinerary);
-            setNodeEditDraft(null);
-            Alert.alert("已删除", response.change_summary || "节点已删除。");
-          } catch (error) {
-            Alert.alert("删除失败", error instanceof Error ? error.message : "请稍后重试");
-          } finally {
-            setNodeSaving(false);
-          }
-        },
-      },
-    ]);
+    confirmDanger("确认删除", `确定删除「${title}」？Agent 将联动调整剩余行程。`, async () => {
+      setNodeSaving(true);
+      try {
+        const response = await deleteNode(itinerary.id, nodeEditDraft.id);
+        if (response.itinerary) await applyItineraryUpdate(response.itinerary);
+        setNodeEditDraft(null);
+        Alert.alert("已删除", response.change_summary || "节点已删除。");
+      } catch (error) {
+        Alert.alert("删除失败", error instanceof Error ? error.message : "请稍后重试");
+      } finally {
+        setNodeSaving(false);
+      }
+    });
   }
 
   async function handleMoveNode(itemId: string, direction: "up" | "down") {
@@ -901,25 +908,18 @@ export function TravelDirectorScreen() {
                 onDelete={(itemId) => {
                   const item = itinerary.items.find((entry) => entry.id === itemId);
                   if (!item) return;
-                  Alert.alert("确认删除", `确定删除「${item.title}」？`, [
-                    { text: "取消", style: "cancel" },
-                    {
-                      text: "删除",
-                      style: "destructive",
-                      onPress: async () => {
-                        setNodeSaving(true);
-                        try {
-                          const response = await deleteNode(itinerary.id, itemId);
-                          if (response.itinerary) await applyItineraryUpdate(response.itinerary);
-                          Alert.alert("已删除", response.change_summary || "节点已删除。");
-                        } catch (error) {
-                          Alert.alert("删除失败", error instanceof Error ? error.message : "请稍后重试");
-                        } finally {
-                          setNodeSaving(false);
-                        }
-                      },
-                    },
-                  ]);
+                  confirmDanger("确认删除", `确定删除「${item.title}」？`, async () => {
+                    setNodeSaving(true);
+                    try {
+                      const response = await deleteNode(itinerary.id, itemId);
+                      if (response.itinerary) await applyItineraryUpdate(response.itinerary);
+                      Alert.alert("已删除", response.change_summary || "节点已删除。");
+                    } catch (error) {
+                      Alert.alert("删除失败", error instanceof Error ? error.message : "请稍后重试");
+                    } finally {
+                      setNodeSaving(false);
+                    }
+                  });
                 }}
               />
               <NodeEditModal
