@@ -48,8 +48,19 @@ const MAP_BOOT = `
 `;
 
 const MAP_VIEW_HELPERS = `
+  function distanceFromCenter(item, center) {
+    const lngDiff = item.lng - center.lng;
+    const latDiff = item.lat - center.lat;
+    return Math.sqrt(lngDiff * lngDiff + latDiff * latDiff);
+  }
   function displayMarkersForCity(markers, center) {
-    return markers;
+    const localMarkers = markers.filter(function(item) {
+      return distanceFromCenter(item, center) < 1.8;
+    });
+    const visibleMarkers = localMarkers.length ? localMarkers : markers;
+    return visibleMarkers.map(function(item, index) {
+      return Object.assign({}, item, { index: index + 1 });
+    });
   }
 `;
 

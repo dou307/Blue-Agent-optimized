@@ -449,10 +449,6 @@ export function TravelDirectorScreen() {
 
   function handleQuickRecommend(category: "food" | "hotel") {
     if (!itinerary) return;
-    if (category === "hotel") {
-      handleRecommendHotelAreas();
-      return;
-    }
     const lastItem = itinerary.items[itinerary.items.length - 1];
     const keyword =
       category === "food"
@@ -1128,7 +1124,13 @@ export function TravelDirectorScreen() {
                 recommendation={poiRecommendation}
                 candidates={poiCandidates}
                 loading={poiLoading}
-                loadingText={poiContext?.category === "food" ? "正在搜索美食中" : undefined}
+                loadingText={
+                  poiContext?.category === "food"
+                    ? "正在搜索美食中"
+                    : poiContext?.category === "hotel"
+                      ? "正在搜索酒店中"
+                      : undefined
+                }
                 onClose={() => {
                   setPoiPickerVisible(false);
                   setPoiContext(null);

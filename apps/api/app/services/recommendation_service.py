@@ -17,6 +17,20 @@ from app.services.amap_service import amap_service
 from app.services.llm import llm_service
 from app.services.store import store
 
+KNOWN_CITY_NAMES = [
+    "北京",
+    "上海",
+    "广州",
+    "深圳",
+    "成都",
+    "杭州",
+    "西安",
+    "南京",
+    "重庆",
+    "苏州",
+    "天津",
+]
+
 
 class RecommendationService:
     def recommend(self, request: RecommendPOIRequest) -> RecommendPOIResponse:
@@ -24,6 +38,8 @@ class RecommendationService:
         candidates: list[POICandidate] = []
 
         for poi in pois:
+            if request.category == "hotel" and not self._is_poi_in_destination(poi, request.city):
+                continue
             candidate = self._poi_to_candidate(poi, request)
             if request.near_lat is not None and request.near_lng is not None and candidate.geo_lat and candidate.geo_lng:
                 route = amap_service.route_estimate(
@@ -158,6 +174,23 @@ class RecommendationService:
             deeplinks=deeplinks,
             tags=[request.keyword, request.category],
         )
+
+    @staticmethod
+    def _is_poi_in_destination(poi: dict[str, Any], city: str) -> bool:
+        destination = city.strip().replace("市", "")
+        cityname = str(poi.get("cityname") or "").replace("市", "")
+        adname = str(poi.get("adname") or "")
+        address = str(poi.get("address") or "")
+        name = str(poi.get("name") or "")
+        text = f"{cityname} {adname} {address} {name}"
+
+        if cityname:
+            return destination in cityname
+        if destination in text:
+            return True
+
+        other_city_hit = any(other != destination and other in text for other in KNOWN_CITY_NAMES)
+        return not other_city_hit
 
     def _rank_with_llm(self, request: RecommendPOIRequest, candidates: list[POICandidate]) -> list[POICandidate]:
         if not candidates:
