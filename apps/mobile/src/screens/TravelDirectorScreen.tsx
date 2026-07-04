@@ -1192,11 +1192,11 @@ function WidgetPreview({
           <Text style={styles.widgetStatus}>数据已更新</Text>
         </View>
         <Text style={styles.widgetNextLabel}>下一站</Text>
-        <Text style={styles.widgetTitle} numberOfLines={3}>{nextItem.title}</Text>
+        <Text style={styles.widgetTitle} numberOfLines={2}>{nextItem.title}</Text>
         <Text style={styles.widgetTime}>{scheduleText}</Text>
         <Text style={styles.widgetLocation} numberOfLines={2}>{nextItem.location}</Text>
         <View style={styles.widgetNotice}>
-          <Text style={styles.widgetNoticeText} numberOfLines={3}>{weatherText}</Text>
+          <Text style={styles.widgetNoticeText} numberOfLines={2}>{weatherText}</Text>
         </View>
         <View style={styles.widgetBottomRow}>
           <View style={styles.widgetSyncRow}>
@@ -1297,60 +1297,62 @@ const styles = StyleSheet.create({
   },
   syncLabel: { color: "#287CFF", fontSize: 12, fontWeight: "900" },
   syncValue: { marginTop: 8, color: "#7085A2", fontSize: 13, lineHeight: 20, fontWeight: "700" },
-  widgetWrap: { gap: 10 },
+  widgetWrap: { gap: 10, width: "100%" },
   widgetShellLarge: {
-    minHeight: 340,
-    padding: 22,
-    borderRadius: 32,
+    width: "100%",
+    aspectRatio: 2,
+    padding: 14,
+    borderRadius: 24,
     backgroundColor: "#12223A",
     borderWidth: 1,
     borderColor: "#2D416A",
+    justifyContent: "space-between",
   },
-  widgetTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  widgetAppName: { flex: 1, color: "#EAF6FF", fontSize: 16, fontWeight: "900" },
+  widgetTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  widgetAppName: { flex: 1, color: "#EAF6FF", fontSize: 12, fontWeight: "900" },
   widgetStatus: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 999,
     overflow: "hidden",
     color: "#A7F3D0",
     backgroundColor: "rgba(20,184,166,0.28)",
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "900",
   },
-  widgetNextLabel: { marginTop: 34, color: "#67E8F9", fontSize: 14, fontWeight: "900" },
-  widgetTitle: { marginTop: 10, color: "#FFFFFF", fontSize: 28, lineHeight: 38, fontWeight: "900" },
-  widgetTime: { marginTop: 22, color: "#C7D7EE", fontSize: 16, fontWeight: "900" },
-  widgetLocation: { marginTop: 12, color: "#8FA7C8", fontSize: 14, lineHeight: 20, fontWeight: "800" },
+  widgetNextLabel: { marginTop: 8, color: "#67E8F9", fontSize: 10, fontWeight: "900" },
+  widgetTitle: { marginTop: 3, color: "#FFFFFF", fontSize: 18, lineHeight: 23, fontWeight: "900" },
+  widgetTime: { marginTop: 7, color: "#C7D7EE", fontSize: 11, fontWeight: "900" },
+  widgetLocation: { marginTop: 3, color: "#8FA7C8", fontSize: 10, lineHeight: 13, fontWeight: "800" },
   widgetNotice: {
-    marginTop: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 18,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
     backgroundColor: "rgba(56,122,160,0.34)",
   },
-  widgetNoticeText: { color: "#BAE6FD", fontSize: 14, lineHeight: 22, fontWeight: "800" },
-  widgetBottomRow: { marginTop: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  widgetSyncRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 },
+  widgetNoticeText: { color: "#BAE6FD", fontSize: 9, lineHeight: 13, fontWeight: "800" },
+  widgetBottomRow: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  widgetSyncRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, flex: 1 },
   widgetSyncChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 999,
     overflow: "hidden",
     color: "#EAF6FF",
     backgroundColor: "rgba(255,255,255,0.12)",
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: "900",
   },
   widgetAddButton: {
-    minHeight: 48,
-    paddingHorizontal: 20,
+    minHeight: 30,
+    paddingHorizontal: 13,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
   },
-  widgetAddButtonText: { color: "#1B63FF", fontSize: 15, fontWeight: "900" },
+  widgetAddButtonText: { color: "#1B63FF", fontSize: 10, fontWeight: "900" },
   topologySummary: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", marginBottom: 10 },
   topologyTitle: { color: "#233B63", fontSize: 13, fontWeight: "900" },
   topologyCopy: { color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
