@@ -38,6 +38,7 @@ import {
   IntentAnalysis,
   Itinerary,
   ItineraryItem,
+  ItemWeatherInfo,
   ItineraryWeatherResponse,
   PlanComparison,
   PlanOption,
@@ -941,6 +942,8 @@ export function TravelDirectorScreen() {
               {itinerary ? (
                 <WidgetPreview
                   itinerary={itinerary}
+                  itemWeather={itemWeatherMap}
+                  syncResult={syncResult}
                   startDate={itinerary.intent.start_date ?? structured.startDate}
                 />
               ) : (
@@ -1163,27 +1166,46 @@ function TopologySummary({ itinerary }: { itinerary: Itinerary }) {
 
 function WidgetPreview({
   itinerary,
+  itemWeather,
+  syncResult,
   startDate,
 }: {
   itinerary: Itinerary;
+  itemWeather?: Record<string, ItemWeatherInfo>;
+  syncResult: SystemSyncResult | null;
   startDate?: string | null;
 }) {
   const nextItem = resolveNextWidgetItem(itinerary.items, startDate);
+  const weather = nextItem ? itemWeather?.[nextItem.id] : undefined;
+  const calendarSync = syncResult?.items.find((item) => item.target === "calendar");
+  const mapSync = syncResult?.items.find((item) => item.target === "map");
+  const scheduleText = nextItem ? formatItemSchedule(startDate, nextItem.day, nextItem.start_time, nextItem.end_time) : "";
+  const weatherText = weather ? `${weather.label} · ${weather.advice}` : "天气适宜，按原计划推进。";
 
   if (!nextItem) return <Text style={styles.summary}>暂无可展示的下一站节点。</Text>;
 
   return (
     <View style={styles.widgetWrap}>
-      <View style={styles.widgetShellSmall}>
-        <View style={styles.widgetSmallIcon}>
-          <Text style={styles.widgetSmallIconText}>↗</Text>
+      <View style={styles.widgetShellLarge}>
+        <View style={styles.widgetTopRow}>
+          <Text style={styles.widgetAppName}>蓝V出行 · 桌面组件</Text>
+          <Text style={styles.widgetStatus}>数据已更新</Text>
         </View>
-        <View style={styles.flex}>
-          <Text style={styles.widgetSmallLabel}>下一站</Text>
-          <Text style={styles.widgetSmallTitle} numberOfLines={1}>{nextItem.title}</Text>
-          <Text style={styles.widgetSmallMeta} numberOfLines={1}>
-            {formatItemSchedule(startDate, nextItem.day, nextItem.start_time, nextItem.end_time)}
-          </Text>
+        <Text style={styles.widgetNextLabel}>下一站</Text>
+        <Text style={styles.widgetTitle} numberOfLines={3}>{nextItem.title}</Text>
+        <Text style={styles.widgetTime}>{scheduleText}</Text>
+        <Text style={styles.widgetLocation} numberOfLines={2}>{nextItem.location}</Text>
+        <View style={styles.widgetNotice}>
+          <Text style={styles.widgetNoticeText} numberOfLines={3}>{weatherText}</Text>
+        </View>
+        <View style={styles.widgetBottomRow}>
+          <View style={styles.widgetSyncRow}>
+            <Text style={styles.widgetSyncChip}>{calendarSync ? "日历 OK" : "日历待同步"}</Text>
+            <Text style={styles.widgetSyncChip}>{mapSync ? "地图 OK" : "地图待同步"}</Text>
+          </View>
+          <Pressable style={styles.widgetAddButton}>
+            <Text style={styles.widgetAddButtonText}>添加至桌面</Text>
+          </Pressable>
         </View>
       </View>
     </View>
@@ -1276,29 +1298,59 @@ const styles = StyleSheet.create({
   syncLabel: { color: "#287CFF", fontSize: 12, fontWeight: "900" },
   syncValue: { marginTop: 8, color: "#7085A2", fontSize: 13, lineHeight: 20, fontWeight: "700" },
   widgetWrap: { gap: 10 },
-  widgetShellSmall: {
-    minHeight: 78,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+  widgetShellLarge: {
+    minHeight: 340,
+    padding: 22,
+    borderRadius: 32,
+    backgroundColor: "#12223A",
     borderWidth: 1,
-    borderColor: "#D8E6FF",
+    borderColor: "#2D416A",
   },
-  widgetSmallIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
+  widgetTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  widgetAppName: { flex: 1, color: "#EAF6FF", fontSize: 16, fontWeight: "900" },
+  widgetStatus: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    overflow: "hidden",
+    color: "#A7F3D0",
+    backgroundColor: "rgba(20,184,166,0.28)",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  widgetNextLabel: { marginTop: 34, color: "#67E8F9", fontSize: 14, fontWeight: "900" },
+  widgetTitle: { marginTop: 10, color: "#FFFFFF", fontSize: 28, lineHeight: 38, fontWeight: "900" },
+  widgetTime: { marginTop: 22, color: "#C7D7EE", fontSize: 16, fontWeight: "900" },
+  widgetLocation: { marginTop: 12, color: "#8FA7C8", fontSize: 14, lineHeight: 20, fontWeight: "800" },
+  widgetNotice: {
+    marginTop: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: "rgba(56,122,160,0.34)",
+  },
+  widgetNoticeText: { color: "#BAE6FD", fontSize: 14, lineHeight: 22, fontWeight: "800" },
+  widgetBottomRow: { marginTop: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  widgetSyncRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 },
+  widgetSyncChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    overflow: "hidden",
+    color: "#EAF6FF",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  widgetAddButton: {
+    minHeight: 48,
+    paddingHorizontal: 20,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1B63FF",
+    backgroundColor: "#FFFFFF",
   },
-  widgetSmallIconText: { color: "#FFFFFF", fontSize: 22, fontWeight: "900" },
-  widgetSmallLabel: { color: "#7F93B1", fontSize: 10, fontWeight: "900" },
-  widgetSmallTitle: { marginTop: 2, color: "#233B63", fontSize: 14, fontWeight: "900" },
-  widgetSmallMeta: { marginTop: 2, color: "#527099", fontSize: 11, fontWeight: "800" },
+  widgetAddButtonText: { color: "#1B63FF", fontSize: 15, fontWeight: "900" },
   topologySummary: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", marginBottom: 10 },
   topologyTitle: { color: "#233B63", fontSize: 13, fontWeight: "900" },
   topologyCopy: { color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
