@@ -11,7 +11,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "用于语音输入您的出行需求"
+        "NSMicrophoneUsageDescription": "用于语音输入您的出行需求",
+        "NSCalendarsUsageDescription": "用于将确认后的行程节点写入系统日历",
+        "NSCalendarsFullAccessUsageDescription": "用于将确认后的行程节点写入系统日历"
       }
     },
     "android": {
@@ -19,7 +21,9 @@
         "backgroundColor": "#EAF3FF"
       },
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR"
       ]
     },
     "plugins": [
@@ -37,6 +41,12 @@
           "androidSpeechServicePackages": [
             "com.google.android.googlequicksearchbox"
           ]
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "用于将确认后的行程节点写入系统日历"
         }
       ],
       "expo-font",

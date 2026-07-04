@@ -33,6 +33,7 @@ import {
   syncSystem,
   uploadTravelDocument,
 } from "../services/api";
+import { syncItineraryToDeviceCalendar } from "../services/deviceCalendar";
 import { formatItemDateLabel } from "../utils/dateUtils";
 import {
   GuardianStatus,
@@ -580,9 +581,22 @@ export function TravelDirectorScreen() {
       const authorized = await authorizePayment(order.id);
       const executed = await executeOrder(authorized.order.id);
       setOrder(executed.order);
-      setItinerary(executed.order.option.itinerary);
-      const synced = await syncSystem(executed.order.option.itinerary.id, executed.order.id);
-      setSyncResult(synced.sync);
+      const executedItinerary = executed.order.option.itinerary;
+      setItinerary(executedItinerary);
+      const synced = await syncSystem(executedItinerary.id, executed.order.id);
+      const calendarSync = await syncItineraryToDeviceCalendar(executedItinerary);
+      setSyncResult({
+        ...synced.sync,
+        items: synced.sync.items.map((item) =>
+          item.target === "calendar"
+            ? {
+                ...item,
+                title: "系统日历",
+                detail: calendarSync.detail,
+              }
+            : item,
+        ),
+      });
       setStage("guardian");
     } catch (error) {
       Alert.alert("执行失败", error instanceof Error ? error.message : "请稍后重试");
