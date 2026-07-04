@@ -903,23 +903,23 @@ export function TravelDirectorScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>动态微调 · 守护重排</Text>
               {syncResult ? (
-                <View style={styles.entityGrid}>
+                <View style={styles.syncList}>
                   {syncResult.items.map((item) => (
-                    <View key={item.target} style={styles.entityPill}>
-                      <Text style={styles.entityLabel}>{item.title}</Text>
-                      <Text style={styles.entityValue}>{item.detail}</Text>
+                    <View key={item.target} style={styles.syncItem}>
+                      <Text style={styles.syncLabel}>{item.title}</Text>
+                      <Text style={styles.syncValue}>{item.detail}</Text>
                     </View>
                   ))}
                 </View>
               ) : null}
-              {itinerary ? (
-                <Pressable style={styles.secondaryCta} onPress={() => setStage("widget")}>
-                  <Text style={styles.secondaryCtaText}>查看桌面组件预览</Text>
-                </Pressable>
-              ) : null}
               <Pressable style={styles.secondaryCta} onPress={handleGuardian} disabled={loading}>
                 <Text style={styles.secondaryCtaText}>模拟航班延误并生成重规划</Text>
               </Pressable>
+              {itinerary ? (
+                <Pressable style={styles.cta} onPress={() => setStage("widget")}>
+                  <Text style={styles.ctaText}>查看最终行程规划  ›</Text>
+                </Pressable>
+              ) : null}
               {guardian?.incidents.map((incident) => (
                 <Text key={incident.id} style={styles.warning}>{incident.title}：{incident.detail}</Text>
               ))}
@@ -934,9 +934,6 @@ export function TravelDirectorScreen() {
                   </Pressable>
                 </View>
               ) : null}
-              <Pressable style={styles.cta} onPress={handleReview} disabled={loading}>
-                <Text style={styles.ctaText}>生成行程回顾  ›</Text>
-              </Pressable>
             </View>
           ) : null}
 
@@ -1330,6 +1327,14 @@ const styles = StyleSheet.create({
   entityPill: { width: "48%", padding: 9, borderRadius: 12, backgroundColor: "#FFFFFF" },
   entityLabel: { color: "#287CFF", fontSize: 10, fontWeight: "900" },
   entityValue: { marginTop: 4, color: "#7085A2", fontSize: 11, lineHeight: 15 },
+  syncList: { gap: 10 },
+  syncItem: {
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+  },
+  syncLabel: { color: "#287CFF", fontSize: 12, fontWeight: "900" },
+  syncValue: { marginTop: 8, color: "#7085A2", fontSize: 13, lineHeight: 20, fontWeight: "700" },
   widgetWrap: { gap: 10 },
   widgetShellLarge: {
     minHeight: 190,
