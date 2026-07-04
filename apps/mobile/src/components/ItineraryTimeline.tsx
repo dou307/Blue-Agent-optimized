@@ -16,6 +16,12 @@ const categoryLabel: Record<ItineraryItem["category"], string> = {
   alert: "提醒",
 };
 
+function timeToMinutes(value: string) {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return 0;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
 type DayWeatherSummary = {
   day: number;
   title: string;
@@ -68,8 +74,12 @@ export function ItineraryTimeline({
   onDelete,
   onRecommendPOI,
 }: Props) {
+  const displayItems = [...items].sort((left, right) => {
+    if (left.day !== right.day) return left.day - right.day;
+    return timeToMinutes(left.start_time) - timeToMinutes(right.start_time);
+  });
   const weatherByDay = new Map<number, ItemWeatherInfo[]>();
-  for (const item of items) {
+  for (const item of displayItems) {
     const weather = itemWeather?.[item.id];
     if (!weather) continue;
     weatherByDay.set(item.day, [...(weatherByDay.get(item.day) ?? []), weather]);
@@ -84,12 +94,13 @@ export function ItineraryTimeline({
     <View style={styles.wrap}>
       <Text style={styles.title}>行程节点</Text>
       <Text style={styles.hint}>点击编辑详情，餐饮/住宿节点可「选店」对比后定节点。</Text>
-      {items.map((item, index) => {
+      {displayItems.map((item, index) => {
         const visual = nodeVisual[resolveNodeType(item)] ?? nodeVisual.soft_task;
         const schedule = formatItemSchedule(startDate, item.day, item.start_time, item.end_time);
         const duration = formatDurationLabel(item.start_time, item.end_time);
         const deleting = deletingItemId === item.id;
-        const daySummary = index === 0 || items[index - 1]?.day !== item.day ? daySummaries.get(item.day) : null;
+        const daySummary =
+          index === 0 || displayItems[index - 1]?.day !== item.day ? daySummaries.get(item.day) : null;
         return (
           <Fragment key={item.id}>
             {daySummary ? (
@@ -146,15 +157,18 @@ export function ItineraryTimeline({
                   <Text style={styles.actionText}>↑</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.actionBtn, index === items.length - 1 || busy || deleting ? styles.actionDisabled : null]}
-                  disabled={index === items.length - 1 || busy || deleting}
+                  style={[
+                    styles.actionBtn,
+                    index === displayItems.length - 1 || busy || deleting ? styles.actionDisabled : null,
+                  ]}
+                  disabled={index === displayItems.length - 1 || busy || deleting}
                   onPress={() => onMoveDown(item.id)}
                 >
                   <Text style={styles.actionText}>↓</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.actionBtn, styles.deleteBtn, busy || deleting ? styles.actionDisabled : null]}
-                  disabled={busy || deleting || items.length <= 1}
+                  disabled={busy || deleting || displayItems.length <= 1}
                   onPress={() => onDelete(item.id)}
                 >
                   <Text style={[styles.actionText, styles.deleteText]}>删</Text>

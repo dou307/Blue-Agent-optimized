@@ -546,7 +546,10 @@ class ItineraryRefiner:
             )
             item_map[planned.id] = apply_node_metadata(merged)
 
-        updated.items = [item_map[item.id] for item in plan.items if item.id in item_map]
+        updated.items = sorted(
+            [item_map[item.id] for item in plan.items if item.id in item_map],
+            key=lambda item: (item.day, _time_to_minutes(item.start_time)),
+        )
         updated.version = current.version + 1
         updated.warnings = list(dict.fromkeys([*updated.warnings, *plan.warnings]))
         return updated
