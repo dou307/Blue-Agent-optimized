@@ -126,7 +126,7 @@ export function ItineraryTimeline({
               </View>
               <Pressable style={styles.main} disabled={deleting} onPress={() => onEdit(item)}>
                 <View style={styles.header}>
-                  <Text style={styles.itemTitle}>{item.title}</Text>
+                  <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
                   <Text style={styles.badge}>{categoryLabel[item.category]}</Text>
                 </View>
                 <Text style={styles.meta}>
@@ -189,7 +189,7 @@ export function ItineraryTimeline({
 
 const styles = StyleSheet.create({
   wrap: { gap: 8 },
-  title: { color: "#30496F", fontSize: 13, fontWeight: "900" },
+  title: { color: "#233B63", fontSize: 16, fontWeight: "900", textAlign: "center" },
   hint: { color: "#8BA0BD", fontSize: 10, lineHeight: 15, marginBottom: 4 },
   row: {
     flexDirection: "row",
@@ -222,17 +222,20 @@ const styles = StyleSheet.create({
   dateText: { color: "#FFFFFF", fontSize: 9, fontWeight: "900" },
   timeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   main: { flex: 1, paddingVertical: 2 },
-  header: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  itemTitle: { flex: 1, color: "#2A4266", fontSize: 12, fontWeight: "900" },
+  header: { minHeight: 20, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
+  itemTitle: { flex: 1, minWidth: 0, color: "#2A4266", fontSize: 12, lineHeight: 18, fontWeight: "900" },
   badge: {
     color: "#287CFF",
     backgroundColor: "#EEF6FF",
     borderRadius: 999,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    height: 20,
+    lineHeight: 20,
     fontSize: 9,
     fontWeight: "900",
     overflow: "hidden",
+    textAlign: "center",
+    flexShrink: 0,
   },
   meta: { marginTop: 4, color: "#527099", fontSize: 10, fontWeight: "800" },
   location: { marginTop: 3, color: "#287CFF", fontSize: 10, fontWeight: "800" },
