@@ -47,6 +47,20 @@ const MAP_BOOT = `
   };
 `;
 
+const MAP_VIEW_HELPERS = `
+  function distanceFromCenter(item, center) {
+    const lngDiff = item.lng - center.lng;
+    const latDiff = item.lat - center.lat;
+    return Math.sqrt(lngDiff * lngDiff + latDiff * latDiff);
+  }
+  function displayMarkersForCity(markers, center) {
+    const localMarkers = markers.filter(function(item) {
+      return distanceFromCenter(item, center) < 1.8;
+    });
+    return localMarkers.length >= 2 ? localMarkers : markers;
+  }
+`;
+
 export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], center: { lng: number; lat: number }) {
   const markerJson = JSON.stringify(markers);
   const centerJson = JSON.stringify(center);
@@ -93,8 +107,10 @@ export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], cente
   <div id="map"></div>
   <script>
     ${MAP_BOOT}
+    ${MAP_VIEW_HELPERS}
     const markers = ${markerJson};
     const center = ${centerJson};
+    const displayMarkers = displayMarkersForCity(markers, center);
     const map = new AMap.Map('map', {
       zoom: 12,
       center: [center.lng, center.lat],
@@ -120,7 +136,7 @@ export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], cente
     const markerInstances = [];
     const path = [];
 
-    markers.forEach(function(item) {
+    displayMarkers.forEach(function(item) {
       path.push([item.lng, item.lat]);
       const typeBadge = item.nodeType === 'hard_anchor' ? '<div class="badge">硬</div>' :
         item.nodeType === 'semi_anchor' ? '<div class="badge">半</div>' : '';
@@ -217,17 +233,20 @@ export function buildLeafletHtml(markers: MapMarkerPayload[], center: { lng: num
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     ${MAP_BOOT}
+    ${MAP_VIEW_HELPERS}
     const markers = ${markerJson};
     const center = ${centerJson};
+    const displayMarkers = displayMarkersForCity(markers, center);
     const map = L.map('map', { zoomControl: true, touchZoom: true, scrollWheelZoom: true, doubleClickZoom: true }).setView([center.lat, center.lng], 12);
     window.__map = map;
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
       maxZoom: 18,
-      attribution: '© OpenStreetMap'
+      attribution: '© 高德地图'
     }).addTo(map);
 
     const latlngs = [];
-    markers.forEach(function(item) {
+    displayMarkers.forEach(function(item) {
       latlngs.push([item.lat, item.lng]);
       const timeLabel = item.scheduleLabel + (item.duration ? ' · ' + item.duration : '');
       const icon = L.divIcon({
@@ -262,6 +281,10 @@ export function buildLeafletHtml(markers: MapMarkerPayload[], center: { lng: num
       map.fitBounds(latlngs, { padding: [40, 40] });
       window.__didInitialFit = true;
     }
+    setTimeout(function() {
+      map.invalidateSize();
+      if (latlngs.length > 0) map.fitBounds(latlngs, { padding: [40, 40] });
+    }, 250);
   </script>
 </body>
 </html>`;

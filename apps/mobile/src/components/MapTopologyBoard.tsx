@@ -131,7 +131,7 @@ export function MapTopologyBoard({
         )}
 
         <View style={styles.mapBadge}>
-          <Text style={styles.mapBadgeText}>{amapKey ? "高德地图" : "OpenStreetMap"}</Text>
+          <Text style={styles.mapBadgeText}>{amapKey ? "高德地图" : "地图拓扑"}</Text>
         </View>
 
         {Platform.OS === "web" ? null : (
