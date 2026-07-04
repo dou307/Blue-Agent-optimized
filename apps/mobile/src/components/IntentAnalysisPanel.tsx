@@ -73,7 +73,7 @@ export function IntentAnalysisPanel({ analysis, travelPreferenceText, loading, o
           <Text style={styles.secondaryText}>返回修改</Text>
         </Pressable>
         <Pressable style={styles.primaryBtn} onPress={onConfirm} disabled={loading}>
-          <Text style={styles.primaryText}>{loading ? "正在生成方案..." : "进入方案比对  ›"}</Text>
+          <Text style={styles.primaryText}>{loading ? "正在生成方案..." : "方案生成和比对  ›"}</Text>
         </Pressable>
       </View>
     </View>
