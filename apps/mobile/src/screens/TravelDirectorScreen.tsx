@@ -113,6 +113,26 @@ function sortItineraryItems(items: ItineraryItem[]) {
   });
 }
 
+function itemStartDateTime(startDate: string | null | undefined, item: ItineraryItem) {
+  if (!startDate) return null;
+  const [year, month, date] = startDate.split("-").map((value) => Number.parseInt(value, 10));
+  const [hour, minute] = item.start_time.split(":").map((value) => Number.parseInt(value, 10));
+  if ([year, month, date, hour, minute].some((value) => Number.isNaN(value))) return null;
+  const result = new Date(year, month - 1, date + Math.max(0, item.day - 1), hour, minute, 0, 0);
+  return Number.isNaN(result.getTime()) ? null : result;
+}
+
+function resolveNextWidgetItem(items: ItineraryItem[], startDate?: string | null) {
+  const sorted = sortItineraryItems(items).filter((item) => item.category !== "alert");
+  if (!sorted.length) return null;
+  if (!startDate) return sorted[0];
+  const now = new Date();
+  return sorted.find((item) => {
+    const startsAt = itemStartDateTime(startDate, item);
+    return startsAt ? startsAt >= now : false;
+  }) ?? sorted[0];
+}
+
 function encodeAmapParam(value: string) {
   return encodeURIComponent(value.trim());
 }
@@ -951,7 +971,7 @@ export function TravelDirectorScreen() {
 
           {itinerary && stage !== "input" && stage !== "analyze" && stage !== "compare" && stage !== "order" && stage !== "guardian" ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>时空拓扑看板</Text>
+              {stage !== "widget" ? <Text style={styles.sectionTitle}>时空拓扑看板</Text> : null}
               <TopologySummary itinerary={itinerary} />
               {selectedTopologyQuote ? (
                 <View style={styles.priceCard}>
@@ -1148,41 +1168,26 @@ function WidgetPreview({
   itinerary: Itinerary;
   startDate?: string | null;
 }) {
-  const items = sortItineraryItems(itinerary.items).filter((item) => item.category !== "alert");
+  const nextItem = resolveNextWidgetItem(itinerary.items, startDate);
 
-  if (!items.length) return <Text style={styles.summary}>暂无可展示的行程节点。</Text>;
+  if (!nextItem) return <Text style={styles.summary}>暂无可展示的下一站节点。</Text>;
 
   return (
     <View style={styles.widgetWrap}>
-      <View style={styles.overviewHero}>
-        <Text style={styles.overviewTitle}>{itinerary.title}</Text>
-        <Text style={styles.overviewMeta}>
-          {formatDisplayRange(startDate, itinerary.items)} · {items.length} 个行程节点
-        </Text>
-      </View>
-      <View style={styles.overviewList}>
-        {items.map((item) => (
-          <View key={item.id} style={styles.overviewItem}>
-            <Text style={styles.overviewTime}>
-              D{item.day} · {item.start_time || "待定"}
-            </Text>
-            <Text style={styles.overviewItemTitle}>{item.title}</Text>
-            <Text style={styles.overviewLocation} numberOfLines={2}>{item.location}</Text>
-          </View>
-        ))}
+      <View style={styles.widgetShellSmall}>
+        <View style={styles.widgetSmallIcon}>
+          <Text style={styles.widgetSmallIconText}>↗</Text>
+        </View>
+        <View style={styles.flex}>
+          <Text style={styles.widgetSmallLabel}>下一站</Text>
+          <Text style={styles.widgetSmallTitle} numberOfLines={1}>{nextItem.title}</Text>
+          <Text style={styles.widgetSmallMeta} numberOfLines={1}>
+            {formatItemSchedule(startDate, nextItem.day, nextItem.start_time, nextItem.end_time)}
+          </Text>
+        </View>
       </View>
     </View>
   );
-}
-
-function formatDisplayRange(startDate: string | null | undefined, items: ItineraryItem[]) {
-  const maxDay = Math.max(1, ...items.map((item) => item.day || 1));
-  if (!startDate) return `${maxDay} 天`;
-  const start = new Date(`${startDate}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return `${maxDay} 天`;
-  const end = new Date(start);
-  end.setDate(start.getDate() + maxDay - 1);
-  return `${start.getMonth() + 1}月${start.getDate()}日 - ${end.getMonth() + 1}月${end.getDate()}日`;
 }
 
 const styles = StyleSheet.create({
@@ -1271,24 +1276,29 @@ const styles = StyleSheet.create({
   syncLabel: { color: "#287CFF", fontSize: 12, fontWeight: "900" },
   syncValue: { marginTop: 8, color: "#7085A2", fontSize: 13, lineHeight: 20, fontWeight: "700" },
   widgetWrap: { gap: 10 },
-  overviewHero: {
-    padding: 16,
+  widgetShellSmall: {
+    minHeight: 78,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
     borderRadius: 20,
-    backgroundColor: "#F7FBFF",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#D8E6FF",
   },
-  overviewTitle: { color: "#233B63", fontSize: 17, lineHeight: 23, fontWeight: "900" },
-  overviewMeta: { marginTop: 8, color: "#7085A2", fontSize: 12, fontWeight: "800" },
-  overviewList: { gap: 8 },
-  overviewItem: {
-    padding: 13,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+  widgetSmallIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1B63FF",
   },
-  overviewTime: { color: "#287CFF", fontSize: 11, fontWeight: "900" },
-  overviewItemTitle: { marginTop: 5, color: "#233B63", fontSize: 14, fontWeight: "900" },
-  overviewLocation: { marginTop: 4, color: "#7085A2", fontSize: 12, lineHeight: 17, fontWeight: "700" },
+  widgetSmallIconText: { color: "#FFFFFF", fontSize: 22, fontWeight: "900" },
+  widgetSmallLabel: { color: "#7F93B1", fontSize: 10, fontWeight: "900" },
+  widgetSmallTitle: { marginTop: 2, color: "#233B63", fontSize: 14, fontWeight: "900" },
+  widgetSmallMeta: { marginTop: 2, color: "#527099", fontSize: 11, fontWeight: "800" },
   topologySummary: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", marginBottom: 10 },
   topologyTitle: { color: "#233B63", fontSize: 13, fontWeight: "900" },
   topologyCopy: { color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
