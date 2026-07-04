@@ -57,8 +57,6 @@ type Props = {
   deletingItemId?: string | null;
   itemWeather?: Record<string, ItemWeatherInfo>;
   onEdit: (item: ItineraryItem) => void;
-  onMoveUp: (itemId: string) => void;
-  onMoveDown: (itemId: string) => void;
   onDelete: (itemId: string) => void;
   onNavigate?: (item: ItineraryItem) => void;
   onRecommendPOI?: (item: ItineraryItem) => void;
@@ -71,8 +69,6 @@ export function ItineraryTimeline({
   deletingItemId,
   itemWeather,
   onEdit,
-  onMoveUp,
-  onMoveDown,
   onDelete,
   onNavigate,
   onRecommendPOI,
@@ -158,41 +154,24 @@ export function ItineraryTimeline({
                     disabled={busy || deleting}
                     onPress={() => onRecommendPOI(item)}
                   >
-                    <Text style={styles.pickText}>选</Text>
+                    <Text style={styles.pickText}>挑选</Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  style={[styles.actionBtn, index === 0 || busy || deleting ? styles.actionDisabled : null]}
-                  disabled={index === 0 || busy || deleting}
-                  onPress={() => onMoveUp(item.id)}
-                >
-                  <Text style={styles.actionText}>↑</Text>
-                </Pressable>
                 {onNavigate ? (
                   <Pressable
                     style={[styles.actionBtn, styles.navigateBtn, busy || deleting ? styles.actionDisabled : null]}
                     disabled={busy || deleting}
                     onPress={() => onNavigate(item)}
                   >
-                    <Text style={styles.navigateText}>↗</Text>
+                    <Text style={styles.navigateText}>导航</Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  style={[
-                    styles.actionBtn,
-                    index === displayItems.length - 1 || busy || deleting ? styles.actionDisabled : null,
-                  ]}
-                  disabled={index === displayItems.length - 1 || busy || deleting}
-                  onPress={() => onMoveDown(item.id)}
-                >
-                  <Text style={styles.actionText}>↓</Text>
-                </Pressable>
                 <Pressable
                   style={[styles.actionBtn, styles.deleteBtn, busy || deleting ? styles.actionDisabled : null]}
                   disabled={busy || deleting || displayItems.length <= 1}
                   onPress={() => onDelete(item.id)}
                 >
-                  <Text style={[styles.actionText, styles.deleteText]}>删</Text>
+                  <Text style={[styles.actionText, styles.deleteText]}>删除</Text>
                 </Pressable>
               </View>
               {deleting ? (
@@ -288,9 +267,9 @@ const styles = StyleSheet.create({
   dayWeatherAdvice: { marginTop: 2, color: "#4D8B6B", fontSize: 10, lineHeight: 14, fontWeight: "800" },
   dayWeatherAdviceWarn: { color: "#F97316" },
   cost: { marginTop: 4, color: "#1B63FF", fontSize: 10, fontWeight: "900" },
-  actions: { gap: 4, justifyContent: "center" },
+  actions: { width: 44, gap: 4, justifyContent: "center" },
   actionBtn: {
-    width: 30,
+    width: 44,
     height: 28,
     borderRadius: 8,
     alignItems: "center",
@@ -302,7 +281,7 @@ const styles = StyleSheet.create({
   deleteBtn: { backgroundColor: "#FFF1F0" },
   deleteText: { color: "#E55353" },
   navigateBtn: { backgroundColor: "#EAF4FF" },
-  navigateText: { color: "#287CFF", fontSize: 15, fontWeight: "900" },
+  navigateText: { color: "#287CFF", fontSize: 11, fontWeight: "900" },
   pickBtn: { backgroundColor: "#E8FFF3" },
   pickText: { color: "#1A9D5C", fontSize: 11, fontWeight: "900" },
   deletingOverlay: {

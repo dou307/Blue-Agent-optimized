@@ -24,7 +24,6 @@ import {
   getTripReview,
   optimizeItineraryByWeather,
   prepareOrder,
-  reorderNodes,
   requestReplan,
   searchAccommodationAreas,
   searchRecommendations,
@@ -53,22 +52,23 @@ import {
   TripReview,
 } from "../types";
 import { buildEffectiveMessage, defaultStructured, parseTravelFromText, StructuredFields } from "../utils/parseTravelInput";
-import { defaultTravelPreferences, TravelPreferences } from "../utils/travelPreferences";
+import { defaultTravelPreferences, serializeTravelPreferences, TravelPreferences } from "../utils/travelPreferences";
 import { riskTextForItem } from "../utils/riskUtils";
 
 const samplePrompt = "";
 const screenWidth = Dimensions.get("window").width;
 
-type Stage = "input" | "analyze" | "compare" | "order" | "guardian" | "widget" | "review";
+type Stage = "input" | "analyze" | "compare" | "compareDetail" | "order" | "guardian" | "widget" | "review";
 
-const stageMeta: Array<{ id: Stage; title: string; subtitle: string }> = [
-  { id: "input", title: "D1 意图爆发", subtitle: "多模态输入" },
-  { id: "analyze", title: "D1 解析确认", subtitle: "五要素理解" },
-  { id: "compare", title: "D2 视觉转译", subtitle: "拓扑方案" },
-  { id: "order", title: "D3 跨端执行", subtitle: "参数化跳转" },
-  { id: "guardian", title: "D4 动态微调", subtitle: "异常重规划" },
-  { id: "widget", title: "D4 查看最终结果", subtitle: "成果汇总" },
-  { id: "review", title: "D5 回顾沉淀", subtitle: "记忆同步" },
+const stageMeta: Array<{ id: Stage; step: number; title: string; subtitle: string }> = [
+  { id: "input", step: 1, title: "D1 意图爆发", subtitle: "多模态输入" },
+  { id: "analyze", step: 2, title: "D1 解析确认", subtitle: "五要素理解" },
+  { id: "compare", step: 3, title: "D2 视觉转译", subtitle: "拓扑方案" },
+  { id: "compareDetail", step: 3, title: "D2 视觉转译", subtitle: "拓扑方案" },
+  { id: "order", step: 4, title: "D3 跨端执行", subtitle: "参数化跳转" },
+  { id: "guardian", step: 5, title: "D4 动态微调", subtitle: "异常重规划" },
+  { id: "widget", step: 6, title: "D4 行程总览", subtitle: "最终规划" },
+  { id: "review", step: 7, title: "D5 回顾沉淀", subtitle: "记忆同步" },
 ];
 
 function topologyStats(itinerary: Itinerary) {
@@ -315,6 +315,14 @@ export function TravelDirectorScreen() {
     if (!weather?.available) return {};
     return Object.fromEntries(weather.item_weather.map((item) => [item.item_id, item]));
   }, [weather]);
+  const selectedTopologyQuote = selectedOption?.quote ?? order?.option.quote ?? null;
+  const analysisPreferenceText = useMemo(
+    () =>
+      Array.from(
+        new Set([structured.preferences.trim(), serializeTravelPreferences(travelPreferences).trim()].filter(Boolean)),
+      ).join(" / "),
+    [structured.preferences, travelPreferences],
+  );
 
   useEffect(() => {
     const hints = parseTravelFromText(message);
@@ -585,6 +593,7 @@ export function TravelDirectorScreen() {
     try {
       setSelectedOption(option);
       const response = await prepareOrder(comparison.id, option.id);
+      setSelectedOption(response.order.option);
       setOrder(response.order);
       setItinerary(response.order.option.itinerary);
       setStage("order");
@@ -595,6 +604,16 @@ export function TravelDirectorScreen() {
     }
   }
 
+  function handleSelectPlanForTopology(option: PlanOption) {
+    setSelectedOption(option);
+    setItinerary(option.itinerary);
+    setOrder(null);
+    setSyncResult(null);
+    setGuardian(null);
+    setProposal(null);
+    setStage("compareDetail");
+  }
+
   async function handleExecute() {
     if (!order) return;
     setLoading(true);
@@ -603,6 +622,7 @@ export function TravelDirectorScreen() {
       const executed = await executeOrder(authorized.order.id);
       setOrder(executed.order);
       const executedItinerary = executed.order.option.itinerary;
+      setSelectedOption(executed.order.option);
       setItinerary(executedItinerary);
       const synced = await syncSystem(executedItinerary.id, executed.order.id);
       const calendarSync = await syncItineraryToDeviceCalendar(executedItinerary);
@@ -771,32 +791,6 @@ export function TravelDirectorScreen() {
     });
   }
 
-  async function handleMoveNode(itemId: string, direction: "up" | "down") {
-    if (!itinerary) return;
-    const index = itinerary.items.findIndex((item) => item.id === itemId);
-    if (index < 0) return;
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= itinerary.items.length) return;
-
-    const itemIds = itinerary.items.map((item) => item.id);
-    [itemIds[index], itemIds[targetIndex]] = [itemIds[targetIndex], itemIds[index]];
-
-    setNodeSaving(true);
-    try {
-      const response = await reorderNodes(itinerary.id, itemIds);
-      if (response.itinerary) await applyItineraryUpdate(response.itinerary);
-      const affected = response.affected_item_ids?.length ?? 0;
-      Alert.alert(
-        "顺序已更新",
-        `${response.change_summary || "节点顺序已调整。"}${affected ? `\n\n共联动 ${affected} 个节点。` : ""}`,
-      );
-    } catch (error) {
-      Alert.alert("调整失败", error instanceof Error ? error.message : "请稍后重试");
-    } finally {
-      setNodeSaving(false);
-    }
-  }
-
   async function handleWeatherOptimize() {
     if (!itinerary) return;
     setWeatherLoading(true);
@@ -884,7 +878,7 @@ export function TravelDirectorScreen() {
 
             <View style={styles.stageCurrentCard}>
               <View style={styles.stageCurrentHeader}>
-                <Text style={styles.stageCurrentIndex}>{currentStageIndex + 1}</Text>
+                <Text style={styles.stageCurrentIndex}>{currentStage.step}</Text>
                 <Text style={styles.stageCurrentTitle} numberOfLines={1}>
                   {cleanStageTitle(currentStage.title)}
                 </Text>
@@ -911,7 +905,7 @@ export function TravelDirectorScreen() {
             </Pressable>
           </View>
 
-          <AgentStatus loading={loading} subtitle={subtitle} />
+          {stage === "input" ? <AgentStatus loading={loading} subtitle={subtitle} /> : null}
 
           {stage === "input" ? (
             <View style={styles.section}>
@@ -934,6 +928,7 @@ export function TravelDirectorScreen() {
             <View style={styles.section}>
               <IntentAnalysisPanel
                 analysis={analysis}
+                travelPreferenceText={analysisPreferenceText}
                 loading={loading}
                 onConfirm={handleCompare}
                 onBack={() => setStage("input")}
@@ -945,7 +940,11 @@ export function TravelDirectorScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>视觉转译 · 候选拓扑</Text>
               {comparison?.options.map((option) => (
-                <Pressable key={option.id} style={[styles.optionCard, selectedOption?.id === option.id ? styles.optionCardActive : null]} onPress={() => handlePrepare(option)}>
+                <Pressable
+                  key={option.id}
+                  style={[styles.optionCard, selectedOption?.id === option.id ? styles.optionCardActive : null]}
+                  onPress={() => handleSelectPlanForTopology(option)}
+                >
                   <View style={styles.optionHeader}>
                     <Text style={styles.optionTitle}>{option.title}</Text>
                     <Text style={styles.price}>¥{option.quote.total_price}</Text>
@@ -994,23 +993,23 @@ export function TravelDirectorScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>动态微调 · 守护重排</Text>
               {syncResult ? (
-                <View style={styles.entityGrid}>
+                <View style={styles.syncList}>
                   {syncResult.items.map((item) => (
-                    <View key={item.target} style={styles.entityPill}>
-                      <Text style={styles.entityLabel}>{item.title}</Text>
-                      <Text style={styles.entityValue}>{item.detail}</Text>
+                    <View key={item.target} style={styles.syncItem}>
+                      <Text style={styles.syncLabel}>{item.title}</Text>
+                      <Text style={styles.syncValue}>{item.detail}</Text>
                     </View>
                   ))}
                 </View>
               ) : null}
-              {itinerary ? (
-                <Pressable style={styles.secondaryCta} onPress={() => setStage("widget")}>
-                  <Text style={styles.secondaryCtaText}>查看最终结果</Text>
-                </Pressable>
-              ) : null}
               <Pressable style={styles.secondaryCta} onPress={handleGuardian} disabled={loading}>
                 <Text style={styles.secondaryCtaText}>模拟航班延误并生成重规划</Text>
               </Pressable>
+              {itinerary ? (
+                <Pressable style={styles.cta} onPress={() => setStage("widget")}>
+                  <Text style={styles.ctaText}>查看最终行程规划  ›</Text>
+                </Pressable>
+              ) : null}
               {guardian?.incidents.map((incident) => (
                 <Text key={incident.id} style={styles.warning}>{incident.title}：{incident.detail}</Text>
               ))}
@@ -1025,15 +1024,12 @@ export function TravelDirectorScreen() {
                   </Pressable>
                 </View>
               ) : null}
-              <Pressable style={styles.cta} onPress={handleReview} disabled={loading}>
-                <Text style={styles.ctaText}>生成行程回顾  ›</Text>
-              </Pressable>
             </View>
           ) : null}
 
           {stage === "widget" ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>查看最终结果</Text>
+              <Text style={styles.sectionTitle}>行程总览</Text>
               {itinerary ? (
                 <WidgetPreview
                   itinerary={itinerary}
@@ -1042,8 +1038,11 @@ export function TravelDirectorScreen() {
                   startDate={itinerary.intent.start_date ?? structured.startDate}
                 />
               ) : (
-                <Text style={styles.summary}>生成行程后可预览桌面组件。</Text>
+                <Text style={styles.summary}>生成行程后可查看最终行程规划。</Text>
               )}
+              <Pressable style={styles.secondaryCta} onPress={() => setStage("input")}>
+                <Text style={styles.secondaryCtaText}>行程修改</Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -1064,9 +1063,13 @@ export function TravelDirectorScreen() {
             </View>
           ) : null}
 
-          {itinerary ? (
+          {itinerary && (stage === "compareDetail" || stage === "widget" || stage === "review") ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>时空拓扑看板</Text>
+              {stage === "compareDetail" ? (
+                <Text style={styles.sectionTitle}>视觉转译 · 行程拓扑</Text>
+              ) : stage !== "widget" ? (
+                <Text style={styles.sectionTitle}>时空拓扑看板</Text>
+              ) : null}
               <TopologySummary itinerary={itinerary} />
               {priceQuote ? (
                 <View style={styles.priceCard}>
@@ -1080,6 +1083,19 @@ export function TravelDirectorScreen() {
                   <Text style={styles.priceSource}>
                     {describePriceSources(priceQuote.data_sources)} · 市内耗时 {priceQuote.duration_text}
                   </Text>
+                </View>
+              ) : selectedTopologyQuote ? (
+                <View style={styles.priceCard}>
+                  <Text style={styles.priceCardTitle}>已选方案报价</Text>
+                  <Text style={styles.priceTotal}>¥{selectedTopologyQuote.total_price}</Text>
+                  <View style={styles.priceMetrics}>
+                    <Text style={styles.priceMetric}>耗时 {selectedTopologyQuote.duration_text}</Text>
+                    <Text style={styles.priceMetric}>舒适 {selectedTopologyQuote.comfort_score}</Text>
+                    <Text style={styles.priceMetric}>风险 {selectedTopologyQuote.risk_level}</Text>
+                  </View>
+                  <Text style={styles.priceSource}>{selectedTopologyQuote.flight}</Text>
+                  <Text style={styles.priceSource}>{selectedTopologyQuote.hotel}</Text>
+                  <Text style={styles.priceSource}>{selectedTopologyQuote.local_transport}</Text>
                 </View>
               ) : null}
               <View style={styles.quickPickRow}>
@@ -1150,8 +1166,6 @@ export function TravelDirectorScreen() {
                 onEdit={handleEditNode}
                 onNavigate={handleNavigateToItem}
                 onRecommendPOI={handleRecommendFromItem}
-                onMoveUp={(itemId) => handleMoveNode(itemId, "up")}
-                onMoveDown={(itemId) => handleMoveNode(itemId, "down")}
                 onDelete={(itemId) => {
                   const item = itinerary.items.find((entry) => entry.id === itemId);
                   if (!item) return;
@@ -1171,6 +1185,11 @@ export function TravelDirectorScreen() {
                   });
                 }}
               />
+              {stage === "compareDetail" && selectedOption ? (
+                <Pressable style={styles.cta} onPress={() => handlePrepare(selectedOption)} disabled={loading}>
+                  <Text style={styles.ctaText}>{loading ? "正在准备跨端执行..." : "确认此方案并进入跨端执行  ›"}</Text>
+                </Pressable>
+              ) : null}
               <NodeEditModal
                 visible={nodeEditDraft != null}
                 draft={nodeEditDraft}
@@ -1281,6 +1300,18 @@ function WidgetPreview({
 
   return (
     <View style={styles.widgetWrap}>
+      <View style={styles.widgetSyncSummaryRow}>
+        <View style={[styles.widgetSyncSummaryTag, !calendarSync ? styles.widgetSyncSummaryTagMuted : null]}>
+          <Text style={[styles.widgetSyncSummaryText, !calendarSync ? styles.widgetSyncSummaryTextMuted : null]}>
+            {calendarSync ? "日历已写入" : "日历待写入"}
+          </Text>
+        </View>
+        <View style={[styles.widgetSyncSummaryTag, !mapSync ? styles.widgetSyncSummaryTagMuted : null]}>
+          <Text style={[styles.widgetSyncSummaryText, !mapSync ? styles.widgetSyncSummaryTextMuted : null]}>
+            {mapSync ? "地图已规划" : "地图待规划"}
+          </Text>
+        </View>
+      </View>
       <View style={styles.widgetShellLarge}>
         <View style={styles.widgetTopRow}>
           <Text style={styles.widgetAppName}>蓝V出行 · 桌面组件</Text>
@@ -1306,10 +1337,6 @@ function WidgetPreview({
             </Text>
           </View>
         ) : null}
-        <View style={styles.widgetSyncRow}>
-          <Text style={styles.widgetSyncChip}>{calendarSync ? "日历 OK" : "日历待同步"}</Text>
-          <Text style={styles.widgetSyncChip}>{mapSync ? "地图 OK" : "地图待同步"}</Text>
-        </View>
         <View style={styles.widgetActionRow}>
           <Pressable
             style={styles.widgetAddButton}
@@ -1495,7 +1522,33 @@ const styles = StyleSheet.create({
   entityPill: { width: "48%", padding: 9, borderRadius: 12, backgroundColor: "#FFFFFF" },
   entityLabel: { color: "#287CFF", fontSize: 10, fontWeight: "900" },
   entityValue: { marginTop: 4, color: "#7085A2", fontSize: 11, lineHeight: 15 },
+  syncList: { gap: 10 },
+  syncItem: {
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+  },
+  syncLabel: { color: "#287CFF", fontSize: 12, fontWeight: "900" },
+  syncValue: { marginTop: 8, color: "#7085A2", fontSize: 13, lineHeight: 20, fontWeight: "700" },
   widgetWrap: { gap: 10 },
+  widgetSyncSummaryRow: { flexDirection: "row", gap: 8 },
+  widgetSyncSummaryTag: {
+    flex: 1,
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E8FFF3",
+    borderWidth: 1,
+    borderColor: "#B8EBD0",
+  },
+  widgetSyncSummaryTagMuted: {
+    backgroundColor: "#F2F6FA",
+    borderColor: "#D8E6FF",
+  },
+  widgetSyncSummaryText: { color: "#1A9D5C", fontSize: 11, fontWeight: "900" },
+  widgetSyncSummaryTextMuted: { color: "#8BA0BD" },
   widgetShellLarge: {
     minHeight: 190,
     padding: 16,
@@ -1532,17 +1585,6 @@ const styles = StyleSheet.create({
   widgetNoticeText: { color: "#BAE6FD", fontSize: 10, lineHeight: 14, fontWeight: "800" },
   widgetNoticeTextWarn: { color: "#FDBA74" },
   widgetNoticeTextDanger: { color: "#FCA5A5" },
-  widgetSyncRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
-  widgetSyncChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    overflow: "hidden",
-    color: "#D7E8FF",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    fontSize: 10,
-    fontWeight: "900",
-  },
   widgetActionRow: { marginTop: 14, flexDirection: "row", justifyContent: "flex-end" },
   widgetAddButton: {
     paddingHorizontal: 14,
@@ -1551,31 +1593,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   widgetAddButtonText: { color: "#1B63FF", fontSize: 12, fontWeight: "900" },
-  widgetShellSmall: {
-    minHeight: 78,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#D8E6FF",
-  },
-  widgetSmallIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1B63FF",
-  },
-  widgetSmallIconText: { color: "#FFFFFF", fontSize: 22, fontWeight: "900" },
-  widgetSmallLabel: { color: "#7F93B1", fontSize: 10, fontWeight: "900" },
-  widgetSmallTitle: { marginTop: 2, color: "#233B63", fontSize: 14, fontWeight: "900" },
-  widgetSmallMeta: { marginTop: 2, color: "#527099", fontSize: 11, fontWeight: "800" },
-  widgetPanel: { padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", borderWidth: 1, borderColor: "#D8E6FF" },
-  widgetQueueItem: { marginTop: 6, color: "#527099", fontSize: 11, lineHeight: 16, fontWeight: "800" },
   topologySummary: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", marginBottom: 10 },
   topologyTitle: { color: "#233B63", fontSize: 13, fontWeight: "900" },
   topologyCopy: { color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
