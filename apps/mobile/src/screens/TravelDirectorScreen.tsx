@@ -38,7 +38,6 @@ import {
   IntentAnalysis,
   Itinerary,
   ItineraryItem,
-  ItemWeatherInfo,
   ItineraryWeatherResponse,
   PlanComparison,
   PlanOption,
@@ -51,7 +50,6 @@ import {
 } from "../types";
 import { buildEffectiveMessage, defaultStructured, parseTravelFromText, StructuredFields } from "../utils/parseTravelInput";
 import { defaultTravelPreferences, serializeTravelPreferences, TravelPreferences } from "../utils/travelPreferences";
-import { riskTextForItem } from "../utils/riskUtils";
 
 const samplePrompt = "";
 const screenWidth = Dimensions.get("window").width;
@@ -64,7 +62,7 @@ const stageMeta: Array<{ id: Stage; title: string; subtitle: string }> = [
   { id: "compare", title: "D2 视觉转译", subtitle: "拓扑方案" },
   { id: "order", title: "D3 跨端执行", subtitle: "参数化跳转" },
   { id: "guardian", title: "D4 动态微调", subtitle: "异常重规划" },
-  { id: "widget", title: "D4 桌面组件", subtitle: "下一站卡片" },
+  { id: "widget", title: "D4 行程总览", subtitle: "最终规划" },
   { id: "review", title: "D5 回顾沉淀", subtitle: "记忆同步" },
 ];
 
@@ -113,26 +111,6 @@ function sortItineraryItems(items: ItineraryItem[]) {
     if (left.day !== right.day) return left.day - right.day;
     return timeToMinutes(left.start_time) - timeToMinutes(right.start_time);
   });
-}
-
-function itemStartDateTime(startDate: string | null | undefined, item: ItineraryItem) {
-  if (!startDate) return null;
-  const [year, month, date] = startDate.split("-").map((value) => Number.parseInt(value, 10));
-  const [hour, minute] = item.start_time.split(":").map((value) => Number.parseInt(value, 10));
-  if ([year, month, date, hour, minute].some((value) => Number.isNaN(value))) return null;
-  const result = new Date(year, month - 1, date + Math.max(0, item.day - 1), hour, minute, 0, 0);
-  return Number.isNaN(result.getTime()) ? null : result;
-}
-
-function resolveNextWidgetItem(items: ItineraryItem[], startDate?: string | null) {
-  const sorted = sortItineraryItems(items).filter((item) => item.category !== "alert");
-  if (!sorted.length) return null;
-  if (!startDate) return sorted[0];
-  const now = new Date();
-  return sorted.find((item) => {
-    const startsAt = itemStartDateTime(startDate, item);
-    return startsAt ? startsAt >= now : false;
-  }) ?? sorted[0];
 }
 
 function encodeAmapParam(value: string) {
@@ -939,19 +917,17 @@ export function TravelDirectorScreen() {
 
           {stage === "widget" ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>桌面 Widget · 下一站卡片</Text>
+              <Text style={styles.sectionTitle}>行程总览</Text>
               {itinerary ? (
                 <WidgetPreview
                   itinerary={itinerary}
-                  itemWeather={itemWeatherMap}
-                  syncResult={syncResult}
                   startDate={itinerary.intent.start_date ?? structured.startDate}
                 />
               ) : (
-                <Text style={styles.summary}>生成行程后可预览桌面组件。</Text>
+                <Text style={styles.summary}>生成行程后可查看最终行程规划。</Text>
               )}
-              <Pressable style={styles.secondaryCta} onPress={() => setStage("guardian")}>
-                <Text style={styles.secondaryCtaText}>返回同步状态</Text>
+              <Pressable style={styles.secondaryCta} onPress={() => setStage("input")}>
+                <Text style={styles.secondaryCtaText}>行程修改</Text>
               </Pressable>
             </View>
           ) : null}
@@ -973,7 +949,7 @@ export function TravelDirectorScreen() {
             </View>
           ) : null}
 
-          {itinerary && stage !== "input" && stage !== "analyze" && stage !== "compare" && stage !== "order" ? (
+          {itinerary && stage !== "input" && stage !== "analyze" && stage !== "compare" && stage !== "order" && stage !== "guardian" ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>时空拓扑看板</Text>
               <TopologySummary itinerary={itinerary} />
@@ -1167,87 +1143,46 @@ function TopologySummary({ itinerary }: { itinerary: Itinerary }) {
 
 function WidgetPreview({
   itinerary,
-  itemWeather,
-  syncResult,
   startDate,
 }: {
   itinerary: Itinerary;
-  itemWeather?: Record<string, ItemWeatherInfo>;
-  syncResult: SystemSyncResult | null;
   startDate?: string | null;
 }) {
-  const nextItem = resolveNextWidgetItem(itinerary.items, startDate);
-  const weather = nextItem ? itemWeather?.[nextItem.id] : undefined;
-  const riskText = nextItem ? riskTextForItem(nextItem, weather) : "";
-  const calendarSync = syncResult?.items.find((item) => item.target === "calendar");
-  const mapSync = syncResult?.items.find((item) => item.target === "map");
-  const widgetSync = syncResult?.items.find((item) => item.target === "widget");
-  const laterItems = nextItem
-    ? sortItineraryItems(itinerary.items)
-        .filter((item) => item.category !== "alert")
-        .filter((item) => item.id !== nextItem.id)
-        .slice(0, 2)
-    : [];
+  const items = sortItineraryItems(itinerary.items).filter((item) => item.category !== "alert");
 
-  if (!nextItem) {
-    return <Text style={styles.summary}>暂无可展示的下一站节点。</Text>;
-  }
+  if (!items.length) return <Text style={styles.summary}>暂无可展示的行程节点。</Text>;
 
   return (
     <View style={styles.widgetWrap}>
-      <View style={styles.widgetShellLarge}>
-        <View style={styles.widgetTopRow}>
-          <Text style={styles.widgetAppName}>蓝V出行</Text>
-          <Text style={styles.widgetStatus}>{syncResult ? "已同步" : "预览"}</Text>
-        </View>
-        <Text style={styles.widgetNextLabel}>下一站</Text>
-        <Text style={styles.widgetTitle} numberOfLines={2}>{nextItem.title}</Text>
-        <Text style={styles.widgetTime}>
-          {formatItemSchedule(startDate, nextItem.day, nextItem.start_time, nextItem.end_time)}
+      <View style={styles.overviewHero}>
+        <Text style={styles.overviewTitle}>{itinerary.title}</Text>
+        <Text style={styles.overviewMeta}>
+          {formatDisplayRange(startDate, itinerary.items)} · {items.length} 个行程节点
         </Text>
-        <Text style={styles.widgetLocation} numberOfLines={2}>{nextItem.location}</Text>
-        {weather ? (
-          <View style={[styles.widgetNotice, weather.risk_level !== "low" ? styles.widgetNoticeWarn : null]}>
-            <Text style={[styles.widgetNoticeText, weather.risk_level !== "low" ? styles.widgetNoticeTextWarn : null]} numberOfLines={2}>
-              {weather.label} · {weather.advice}
-            </Text>
-          </View>
-        ) : null}
-        {riskText ? (
-          <View style={[styles.widgetNotice, styles.widgetNoticeDanger]}>
-            <Text style={[styles.widgetNoticeText, styles.widgetNoticeTextDanger]} numberOfLines={2}>
-              {riskText}
-            </Text>
-          </View>
-        ) : null}
-        <View style={styles.widgetSyncRow}>
-          <Text style={styles.widgetSyncChip}>{calendarSync ? "日历 OK" : "日历待同步"}</Text>
-          <Text style={styles.widgetSyncChip}>{mapSync ? "地图 OK" : "地图待同步"}</Text>
-        </View>
       </View>
-
-      <View style={styles.widgetShellSmall}>
-        <View style={styles.widgetSmallIcon}>
-          <Text style={styles.widgetSmallIconText}>↗</Text>
-        </View>
-        <View style={styles.flex}>
-          <Text style={styles.widgetSmallLabel}>下一站</Text>
-          <Text style={styles.widgetSmallTitle} numberOfLines={1}>{nextItem.title}</Text>
-          <Text style={styles.widgetSmallMeta} numberOfLines={1}>{nextItem.start_time} · {nextItem.location}</Text>
-        </View>
-      </View>
-
-      <View style={styles.widgetPanel}>
-        <Text style={styles.panelTitle}>组件数据源</Text>
-        <Text style={styles.summary}>{widgetSync?.detail ?? "当前为应用内桌面组件预览，执行同步后会展示系统同步状态。"}</Text>
-        {laterItems.map((item) => (
-          <Text key={item.id} style={styles.widgetQueueItem}>
-            {item.start_time} · {item.title}
-          </Text>
+      <View style={styles.overviewList}>
+        {items.map((item) => (
+          <View key={item.id} style={styles.overviewItem}>
+            <Text style={styles.overviewTime}>
+              D{item.day} · {item.start_time || "待定"}
+            </Text>
+            <Text style={styles.overviewItemTitle}>{item.title}</Text>
+            <Text style={styles.overviewLocation} numberOfLines={2}>{item.location}</Text>
+          </View>
         ))}
       </View>
     </View>
   );
+}
+
+function formatDisplayRange(startDate: string | null | undefined, items: ItineraryItem[]) {
+  const maxDay = Math.max(1, ...items.map((item) => item.day || 1));
+  if (!startDate) return `${maxDay} 天`;
+  const start = new Date(`${startDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return `${maxDay} 天`;
+  const end = new Date(start);
+  end.setDate(start.getDate() + maxDay - 1);
+  return `${start.getMonth() + 1}月${start.getDate()}日 - ${end.getMonth() + 1}月${end.getDate()}日`;
 }
 
 const styles = StyleSheet.create({
@@ -1336,78 +1271,24 @@ const styles = StyleSheet.create({
   syncLabel: { color: "#287CFF", fontSize: 12, fontWeight: "900" },
   syncValue: { marginTop: 8, color: "#7085A2", fontSize: 13, lineHeight: 20, fontWeight: "700" },
   widgetWrap: { gap: 10 },
-  widgetShellLarge: {
-    minHeight: 190,
+  overviewHero: {
     padding: 16,
-    borderRadius: 24,
-    backgroundColor: "#17233B",
-    borderWidth: 1,
-    borderColor: "#2D416A",
-  },
-  widgetTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  widgetAppName: { color: "#D7E8FF", fontSize: 12, fontWeight: "900" },
-  widgetStatus: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-    color: "#A7F3D0",
-    backgroundColor: "rgba(16,185,129,0.16)",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  widgetNextLabel: { marginTop: 18, color: "#7DD3FC", fontSize: 11, fontWeight: "900" },
-  widgetTitle: { marginTop: 4, color: "#FFFFFF", fontSize: 22, lineHeight: 28, fontWeight: "900" },
-  widgetTime: { marginTop: 8, color: "#C7D7EE", fontSize: 12, fontWeight: "900" },
-  widgetLocation: { marginTop: 5, color: "#8FA7C8", fontSize: 11, lineHeight: 16, fontWeight: "800" },
-  widgetNotice: {
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: "rgba(125,211,252,0.12)",
-  },
-  widgetNoticeWarn: { backgroundColor: "rgba(251,146,60,0.16)" },
-  widgetNoticeDanger: { backgroundColor: "rgba(248,113,113,0.18)" },
-  widgetNoticeText: { color: "#BAE6FD", fontSize: 10, lineHeight: 14, fontWeight: "800" },
-  widgetNoticeTextWarn: { color: "#FDBA74" },
-  widgetNoticeTextDanger: { color: "#FCA5A5" },
-  widgetSyncRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
-  widgetSyncChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    overflow: "hidden",
-    color: "#D7E8FF",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  widgetShellSmall: {
-    minHeight: 78,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F7FBFF",
     borderWidth: 1,
     borderColor: "#D8E6FF",
   },
-  widgetSmallIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1B63FF",
+  overviewTitle: { color: "#233B63", fontSize: 17, lineHeight: 23, fontWeight: "900" },
+  overviewMeta: { marginTop: 8, color: "#7085A2", fontSize: 12, fontWeight: "800" },
+  overviewList: { gap: 8 },
+  overviewItem: {
+    padding: 13,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
   },
-  widgetSmallIconText: { color: "#FFFFFF", fontSize: 22, fontWeight: "900" },
-  widgetSmallLabel: { color: "#7F93B1", fontSize: 10, fontWeight: "900" },
-  widgetSmallTitle: { marginTop: 2, color: "#233B63", fontSize: 14, fontWeight: "900" },
-  widgetSmallMeta: { marginTop: 2, color: "#527099", fontSize: 11, fontWeight: "800" },
-  widgetPanel: { padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", borderWidth: 1, borderColor: "#D8E6FF" },
-  widgetQueueItem: { marginTop: 6, color: "#527099", fontSize: 11, lineHeight: 16, fontWeight: "800" },
+  overviewTime: { color: "#287CFF", fontSize: 11, fontWeight: "900" },
+  overviewItemTitle: { marginTop: 5, color: "#233B63", fontSize: 14, fontWeight: "900" },
+  overviewLocation: { marginTop: 4, color: "#7085A2", fontSize: 12, lineHeight: 17, fontWeight: "700" },
   topologySummary: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", marginBottom: 10 },
   topologyTitle: { color: "#233B63", fontSize: 13, fontWeight: "900" },
   topologyCopy: { color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
