@@ -49,6 +49,15 @@ function buildDayWeatherSummary(
   };
 }
 
+function riskTextForItem(item: ItineraryItem, weather?: ItemWeatherInfo) {
+  const risks = [
+    ...item.risk_flags,
+    ...(weather && weather.risk_level !== "low" ? [weather.advice || weather.label] : []),
+  ].filter(Boolean);
+  if (item.category === "alert" && !risks.length) risks.push(item.description || "行程存在风险提醒");
+  return risks.join("；");
+}
+
 type Props = {
   items: ItineraryItem[];
   startDate?: string | null;
@@ -98,6 +107,9 @@ export function ItineraryTimeline({
       <Text style={styles.hint}>点击编辑详情，餐饮/住宿节点可「选店」对比后定节点。</Text>
       {displayItems.map((item, index) => {
         const visual = nodeVisual[resolveNodeType(item)] ?? nodeVisual.soft_task;
+        const weather = itemWeather?.[item.id];
+        const riskText = riskTextForItem(item, weather);
+        const hasRisk = Boolean(riskText);
         const schedule = formatItemSchedule(startDate, item.day, item.start_time, item.end_time);
         const duration = formatDurationLabel(item.start_time, item.end_time);
         const deleting = deletingItemId === item.id;
@@ -118,8 +130,8 @@ export function ItineraryTimeline({
                 </Text>
               </View>
             ) : null}
-            <View style={[styles.row, { borderColor: visual.border }]}>
-              <View style={[styles.dateCol, { backgroundColor: visual.border }]}>
+            <View style={[styles.row, { borderColor: visual.border }, hasRisk ? styles.rowRisk : null]}>
+              <View style={[styles.dateCol, { backgroundColor: hasRisk ? "#EF4444" : visual.border }]}>
                 <Text style={styles.dateIndex}>#{index + 1}</Text>
                 <Text style={styles.dateText}>{schedule.split(" ")[0]}</Text>
                 <Text style={styles.timeText}>{item.start_time}</Text>
@@ -137,6 +149,12 @@ export function ItineraryTimeline({
                 <Text style={styles.description} numberOfLines={2}>
                   {item.description}
                 </Text>
+                {hasRisk ? (
+                  <View style={styles.riskBar}>
+                    <Text style={styles.riskLabel}>风险</Text>
+                    <Text style={styles.riskText} numberOfLines={2}>{riskText}</Text>
+                  </View>
+                ) : null}
                 {item.estimated_cost ? (
                   <Text style={styles.cost}>预估 ¥{item.estimated_cost}</Text>
                 ) : null}
@@ -213,6 +231,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
+  rowRisk: {
+    backgroundColor: "#FFF7F7",
+    borderColor: "#EF4444",
+    borderWidth: 2,
+    shadowColor: "#EF4444",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+  },
   dateCol: {
     width: 52,
     borderRadius: 11,
@@ -240,6 +266,20 @@ const styles = StyleSheet.create({
   meta: { marginTop: 4, color: "#527099", fontSize: 10, fontWeight: "800" },
   location: { marginTop: 3, color: "#287CFF", fontSize: 10, fontWeight: "800" },
   description: { marginTop: 3, color: "#7085A2", fontSize: 10, lineHeight: 15, fontWeight: "700" },
+  riskBar: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: "#FEE2E2",
+    borderLeftWidth: 4,
+    borderLeftColor: "#EF4444",
+  },
+  riskLabel: { color: "#DC2626", fontSize: 10, fontWeight: "900" },
+  riskText: { flex: 1, color: "#B91C1C", fontSize: 10, lineHeight: 14, fontWeight: "800" },
   dayWeatherCard: {
     paddingHorizontal: 12,
     paddingVertical: 9,

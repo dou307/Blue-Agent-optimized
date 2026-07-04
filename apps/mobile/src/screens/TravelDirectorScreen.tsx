@@ -1056,6 +1056,7 @@ export function TravelDirectorScreen() {
                 itinerary={itinerary}
                 city={structured.destination}
                 startDate={itinerary.intent.start_date ?? structured.startDate}
+                itemWeather={itemWeatherMap}
                 onUpdateNode={async (itemId, payload) => {
                   const item = itinerary.items.find((entry) => entry.id === itemId);
                   const instruction = item

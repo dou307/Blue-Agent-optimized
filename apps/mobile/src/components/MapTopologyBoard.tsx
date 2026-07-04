@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 
-import { Itinerary, ItineraryItem } from "../types";
+import { ItemWeatherInfo, Itinerary, ItineraryItem } from "../types";
 import { UpdateNodePayload } from "../services/api";
 import { resolveCityCenter } from "../utils/geoCoords";
 import { formatItemSchedule } from "../utils/dateUtils";
@@ -13,6 +13,7 @@ type Props = {
   itinerary: Itinerary;
   city: string;
   startDate?: string | null;
+  itemWeather?: Record<string, ItemWeatherInfo>;
   onUpdateNode: (itemId: string, payload: UpdateNodePayload) => Promise<void>;
   onEditItem: (item: ItineraryItem) => void;
   onMapInteractionChange?: (active: boolean) => void;
@@ -24,6 +25,7 @@ export function MapTopologyBoard({
   itinerary,
   city,
   startDate,
+  itemWeather,
   onUpdateNode,
   onEditItem,
   onMapInteractionChange,
@@ -34,20 +36,20 @@ export function MapTopologyBoard({
   const mapCity = city || itinerary.intent.destination || "北京";
 
   const html = useMemo(() => {
-    const markers = buildMapMarkers(items, mapCity, startDate ?? itinerary.intent.start_date);
+    const markers = buildMapMarkers(items, mapCity, startDate ?? itinerary.intent.start_date, itemWeather);
     const centerPoint = resolveCityCenter(mapCity);
     const center = { lng: centerPoint.lng, lat: centerPoint.lat };
     if (amapKey) {
       return buildAmapHtml(amapKey, markers, center);
     }
     return buildLeafletHtml(markers, center);
-  }, [amapKey, items, mapCity, startDate, itinerary.intent.start_date]);
+  }, [amapKey, items, mapCity, startDate, itinerary.intent.start_date, itemWeather]);
 
   const webMapUrl = useMemo(() => {
-    const markers = buildMapMarkers(items, mapCity, startDate ?? itinerary.intent.start_date);
+    const markers = buildMapMarkers(items, mapCity, startDate ?? itinerary.intent.start_date, itemWeather);
     const first = markers[0] ?? { lng: resolveCityCenter(mapCity).lng, lat: resolveCityCenter(mapCity).lat, title: mapCity };
     return `https://uri.amap.com/marker?position=${first.lng},${first.lat}&name=${encodeURIComponent(first.title)}`;
-  }, [items, mapCity, startDate, itinerary.intent.start_date]);
+  }, [items, mapCity, startDate, itinerary.intent.start_date, itemWeather]);
 
   function injectMapCommand(script: string) {
     webRef.current?.injectJavaScript(`${script}; true;`);
@@ -94,6 +96,10 @@ export function MapTopologyBoard({
             <Text style={styles.legendText}>{nodeVisual[kind].label}</Text>
           </View>
         ))}
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, styles.riskLegendDot]} />
+          <Text style={styles.legendText}>风险路径</Text>
+        </View>
       </View>
 
       <View
@@ -182,6 +188,7 @@ const styles = StyleSheet.create({
   legendRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   legendDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
+  riskLegendDot: { borderColor: "#EF4444", backgroundColor: "#FEE2E2" },
   legendText: { color: "#7085A2", fontSize: 10, fontWeight: "900" },
   mapShell: {
     height: MAP_HEIGHT,

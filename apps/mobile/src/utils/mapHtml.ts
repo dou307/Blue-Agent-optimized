@@ -1,4 +1,4 @@
-import { ItineraryItem } from "../types";
+import { ItemWeatherInfo, ItineraryItem } from "../types";
 import { formatItemDateLabel, formatItemSchedule } from "./dateUtils";
 import { formatDurationLabel, formatTimeRange } from "./durationUtils";
 import { resolveMapPoint } from "./geoCoords";
@@ -19,6 +19,8 @@ export type MapMarkerPayload = {
   duration: string;
   location: string;
   nodeType: "hard_anchor" | "semi_anchor" | "soft_task";
+  riskLevel: "low" | "medium" | "high";
+  riskText: string;
   editable: boolean;
   draggable: boolean;
 };
@@ -85,6 +87,11 @@ export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], cente
     .hard_anchor .marker-bubble { background: linear-gradient(135deg, #287cff, #1b63ff); transform: rotate(-4deg); }
     .semi_anchor .marker-bubble { background: linear-gradient(135deg, #17bfd1, #0ea5b7); }
     .soft_task .marker-bubble { background: linear-gradient(135deg, #89b8ff, #5b95ff); animation: float 2.4s ease-in-out infinite; }
+    .risk_medium .marker-bubble, .risk_high .marker-bubble {
+      background: linear-gradient(135deg, #ff6b6b, #ef4444);
+      box-shadow: 0 8px 20px rgba(239,68,68,0.34);
+    }
+    .risk_medium .marker-stem, .risk_high .marker-stem { background: #ef4444; }
     .marker-stem { width: 4px; height: 12px; background: #287cff; border-radius: 999px; margin-top: -2px; }
     .marker-index {
       position: absolute; top: -8px; left: -8px; min-width: 18px; height: 18px; padding: 0 4px;
@@ -101,6 +108,11 @@ export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], cente
       position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 8px;
       background: #fff; color: #287cff; font-size: 9px; display: flex; align-items: center; justify-content: center;
       box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    .risk-badge {
+      position: absolute; bottom: -7px; right: -7px; height: 16px; padding: 0 5px; border-radius: 8px;
+      background: #fff1f2; color: #e11d48; font-size: 9px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(225,29,72,0.18);
     }
     @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
   </style>
@@ -143,8 +155,10 @@ export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], cente
       const typeBadge = item.nodeType === 'hard_anchor' ? '<div class="badge">硬</div>' :
         item.nodeType === 'semi_anchor' ? '<div class="badge">半</div>' : '';
       const timeLabel = item.scheduleLabel + (item.duration ? ' · ' + item.duration : '');
-      const html = '<div class="cartoon-marker ' + item.nodeType + '">' +
-        '<div class="marker-bubble">' + item.icon + '<div class="marker-index">' + item.index + '</div>' + typeBadge + '</div>' +
+      const riskClass = item.riskLevel === 'low' ? '' : ' risk_' + item.riskLevel;
+      const riskBadge = item.riskLevel === 'low' ? '' : '<div class="risk-badge">险</div>';
+      const html = '<div class="cartoon-marker ' + item.nodeType + riskClass + '">' +
+        '<div class="marker-bubble">' + item.icon + '<div class="marker-index">' + item.index + '</div>' + typeBadge + riskBadge + '</div>' +
         '<div class="marker-stem"></div>' +
         '<div class="marker-title">' + item.title + '</div>' +
         '<div class="marker-time">' + timeLabel + '</div>' +
@@ -194,6 +208,19 @@ export function buildAmapHtml(apiKey: string, markers: MapMarkerPayload[], cente
         lineCap: 'round',
         showDir: true,
       }).setMap(map);
+      for (let i = 0; i < displayMarkers.length - 1; i += 1) {
+        if (displayMarkers[i].riskLevel !== 'low' || displayMarkers[i + 1].riskLevel !== 'low') {
+          new AMap.Polyline({
+            path: [[displayMarkers[i].lng, displayMarkers[i].lat], [displayMarkers[i + 1].lng, displayMarkers[i + 1].lat]],
+            strokeColor: '#EF4444',
+            strokeWeight: 7,
+            strokeOpacity: 0.92,
+            lineJoin: 'round',
+            lineCap: 'round',
+            showDir: true,
+          }).setMap(map);
+        }
+      }
     }
 
     window.__fitMapOnce(map, markerInstances);
@@ -218,6 +245,12 @@ export function buildLeafletHtml(markers: MapMarkerPayload[], center: { lng: num
     .cartoon-pin .bubble {
       width: 44px; height: 44px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
       font-size: 22px; border: 3px solid #fff; box-shadow: 0 8px 16px rgba(40,124,255,0.25); margin: 0 auto; position: relative;
+    }
+    .cartoon-pin.risk .bubble { background: #ef4444 !important; box-shadow: 0 8px 18px rgba(239,68,68,0.32); }
+    .cartoon-pin .risk-badge {
+      position: absolute; bottom: -7px; right: -7px; height: 16px; padding: 0 5px; border-radius: 8px;
+      background: #fff1f2; color: #e11d48; font-size: 9px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
     }
     .cartoon-pin .index {
       position: absolute; top: -8px; left: -8px; min-width: 18px; height: 18px; border-radius: 9px;
@@ -251,9 +284,11 @@ export function buildLeafletHtml(markers: MapMarkerPayload[], center: { lng: num
     displayMarkers.forEach(function(item) {
       latlngs.push([item.lat, item.lng]);
       const timeLabel = item.scheduleLabel + (item.duration ? ' · ' + item.duration : '');
+      const riskClass = item.riskLevel === 'low' ? '' : ' risk';
+      const riskBadge = item.riskLevel === 'low' ? '' : '<div class="risk-badge">险</div>';
       const icon = L.divIcon({
         className: '',
-        html: '<div class="cartoon-pin"><div class="bubble">' + item.icon + '<div class="index">' + item.index + '</div></div><div class="title">' + item.title + '</div><div class="time">' + timeLabel + '</div></div>',
+        html: '<div class="cartoon-pin' + riskClass + '"><div class="bubble">' + item.icon + '<div class="index">' + item.index + '</div>' + riskBadge + '</div><div class="title">' + item.title + '</div><div class="time">' + timeLabel + '</div></div>',
         iconSize: [96, 96],
         iconAnchor: [48, 84],
       });
@@ -273,6 +308,14 @@ export function buildLeafletHtml(markers: MapMarkerPayload[], center: { lng: num
 
     if (latlngs.length > 1) {
       L.polyline(latlngs, { color: '#89B8FF', weight: 5, opacity: 0.85 }).addTo(map);
+      for (let i = 0; i < displayMarkers.length - 1; i += 1) {
+        if (displayMarkers[i].riskLevel !== 'low' || displayMarkers[i + 1].riskLevel !== 'low') {
+          L.polyline(
+            [[displayMarkers[i].lat, displayMarkers[i].lng], [displayMarkers[i + 1].lat, displayMarkers[i + 1].lng]],
+            { color: '#EF4444', weight: 7, opacity: 0.92 }
+          ).addTo(map);
+        }
+      }
     }
     window.mapApi.fitView = function() {
       if (latlngs.length > 0) map.fitBounds(latlngs, { padding: [40, 40] });
@@ -296,10 +339,24 @@ export function buildMapMarkers(
   items: ItineraryItem[],
   city: string,
   startDate?: string | null,
+  itemWeather?: Record<string, ItemWeatherInfo>,
 ): MapMarkerPayload[] {
   return items.map((item, index) => {
     const point = resolveMapPoint(item, index, city);
     const nodeType = resolveNodeType(item);
+    const weather = itemWeather?.[item.id];
+    const riskLevel =
+      item.category === "alert" || weather?.risk_level === "high"
+        ? "high"
+        : item.risk_flags.length || weather?.risk_level === "medium"
+          ? "medium"
+          : "low";
+    const riskText = [
+      ...item.risk_flags,
+      ...(weather && weather.risk_level !== "low" ? [weather.advice || weather.label] : []),
+    ]
+      .filter(Boolean)
+      .join("；");
     return {
       id: item.id,
       index: index + 1,
@@ -315,6 +372,8 @@ export function buildMapMarkers(
       duration: formatDurationLabel(item.start_time, item.end_time),
       location: item.location,
       nodeType,
+      riskLevel,
+      riskText,
       editable: isEditableNode(item),
       draggable: isEditableNode(item),
     };
