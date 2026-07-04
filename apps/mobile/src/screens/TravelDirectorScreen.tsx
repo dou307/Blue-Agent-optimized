@@ -339,6 +339,8 @@ export function TravelDirectorScreen() {
     setPoiPickerVisible(true);
     setPoiLoading(true);
     setPoiCandidates([]);
+    setPoiSummary("");
+    setPoiRecommendation("");
     try {
       const response = await searchRecommendations({
         city,
@@ -1126,6 +1128,7 @@ export function TravelDirectorScreen() {
                 recommendation={poiRecommendation}
                 candidates={poiCandidates}
                 loading={poiLoading}
+                loadingText={poiContext?.category === "food" ? "正在搜索美食中" : undefined}
                 onClose={() => {
                   setPoiPickerVisible(false);
                   setPoiContext(null);
