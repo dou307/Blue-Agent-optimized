@@ -261,7 +261,7 @@ export function parseTravelFromText(text: string): ParsedTravelHints {
   const dateRange = resolveDateRange(text);
   const startDate = dateRange.startDate ?? resolveRelativeStartDate(text);
   const durationDays = resolveDurationDays(text);
-  const endDate = dateRange.endDate ?? (startDate && durationDays ? addDaysIso(startDate, durationDays - 1) : undefined);
+  const endDate = dateRange.endDate ?? (startDate ? addDaysIso(startDate, durationDays ? durationDays - 1 : 1) : undefined);
 
   return {
     origin,
@@ -303,21 +303,27 @@ export function mergeStructured(
   hints: ParsedTravelHints,
   touched: Record<keyof StructuredFields, boolean>,
 ): StructuredFields {
+  const startDate = touched.startDate ? current.startDate : hints.startDate ?? current.startDate;
+  const inferredEndDate = hints.startDate && !hints.endDate ? addDaysIso(hints.startDate, 1) : undefined;
+
   return {
     origin: touched.origin ? current.origin : hints.origin ?? current.origin,
     destination: touched.destination ? current.destination : hints.destination ?? current.destination,
-    startDate: touched.startDate ? current.startDate : hints.startDate ?? current.startDate,
-    endDate: touched.endDate ? current.endDate : hints.endDate ?? current.endDate,
+    startDate,
+    endDate: touched.endDate ? current.endDate : hints.endDate ?? inferredEndDate ?? current.endDate,
     preferences: touched.preferences ? current.preferences : hints.preferences ?? current.preferences,
   };
 }
 
 export function mergeStructuredFromApi(current: StructuredFields, api: Partial<StructuredFields>, touched: Record<keyof StructuredFields, boolean>) {
+  const startDate = touched.startDate ? current.startDate : api.startDate || current.startDate;
+  const inferredEndDate = api.startDate && !api.endDate ? addDaysIso(api.startDate, 1) : undefined;
+
   return {
     origin: touched.origin ? current.origin : api.origin || current.origin,
     destination: touched.destination ? current.destination : api.destination || current.destination,
-    startDate: touched.startDate ? current.startDate : api.startDate || current.startDate,
-    endDate: touched.endDate ? current.endDate : api.endDate || current.endDate,
+    startDate,
+    endDate: touched.endDate ? current.endDate : api.endDate || inferredEndDate || current.endDate,
     preferences: touched.preferences ? current.preferences : api.preferences || current.preferences,
   };
 }

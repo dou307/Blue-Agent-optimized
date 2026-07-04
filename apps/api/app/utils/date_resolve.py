@@ -140,6 +140,8 @@ def resolve_relative_dates(message: str, reference: date | None = None) -> tuple
     end: date | None = None
     if start and duration_days:
         end = start + timedelta(days=duration_days - 1)
+    elif start:
+        end = start + timedelta(days=1)
 
     return (
         start.isoformat() if start else None,
@@ -152,6 +154,5 @@ def enrich_intent_dates(message: str, start_date: str | None, end_date: str | No
     final_start = start_date or resolved_start
     final_end = end_date or resolved_end
     if final_start and not final_end:
-        _, inferred_end = resolve_relative_dates(message)
-        final_end = inferred_end
+        final_end = (date.fromisoformat(final_start) + timedelta(days=1)).isoformat()
     return final_start, final_end
