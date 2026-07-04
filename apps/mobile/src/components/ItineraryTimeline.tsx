@@ -1,7 +1,8 @@
+import { Fragment } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ItemWeatherInfo, ItineraryItem } from "../types";
-import { formatItemSchedule } from "../utils/dateUtils";
+import { formatItemDateLabel, formatItemSchedule } from "../utils/dateUtils";
 import { formatDurationLabel } from "../utils/durationUtils";
 import { nodeVisual, resolveNodeType } from "../utils/nodeUtils";
 
@@ -14,6 +15,33 @@ const categoryLabel: Record<ItineraryItem["category"], string> = {
   free: "弹性",
   alert: "提醒",
 };
+
+type DayWeatherSummary = {
+  day: number;
+  title: string;
+  detail: string;
+  advice: string;
+  hasRisk: boolean;
+};
+
+function buildDayWeatherSummary(
+  day: number,
+  startDate: string | null | undefined,
+  weatherItems: ItemWeatherInfo[],
+): DayWeatherSummary | null {
+  if (!weatherItems.length) return null;
+  const primary = weatherItems.find((item) => item.risk_level !== "low") ?? weatherItems[0];
+  const riskTags = Array.from(new Set(weatherItems.flatMap((item) => item.risk_tags))).slice(0, 3);
+  const labels = Array.from(new Set(weatherItems.map((item) => item.label).filter(Boolean))).slice(0, 2);
+  const advice = primary.advice || "天气适宜，按原计划推进。";
+  return {
+    day,
+    title: `${formatItemDateLabel(startDate, day)} 天气提醒`,
+    detail: labels.length ? labels.join(" / ") : "天气数据已同步",
+    advice: riskTags.length ? `${riskTags.join("、")} · ${advice}` : advice,
+    hasRisk: weatherItems.some((item) => item.risk_level !== "low"),
+  };
+}
 
 type Props = {
   items: ItineraryItem[];
@@ -40,6 +68,18 @@ export function ItineraryTimeline({
   onDelete,
   onRecommendPOI,
 }: Props) {
+  const weatherByDay = new Map<number, ItemWeatherInfo[]>();
+  for (const item of items) {
+    const weather = itemWeather?.[item.id];
+    if (!weather) continue;
+    weatherByDay.set(item.day, [...(weatherByDay.get(item.day) ?? []), weather]);
+  }
+  const daySummaries = new Map<number, DayWeatherSummary>();
+  for (const [day, weatherItems] of weatherByDay) {
+    const summary = buildDayWeatherSummary(day, startDate, weatherItems);
+    if (summary) daySummaries.set(day, summary);
+  }
+
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>行程节点</Text>
@@ -49,78 +89,84 @@ export function ItineraryTimeline({
         const schedule = formatItemSchedule(startDate, item.day, item.start_time, item.end_time);
         const duration = formatDurationLabel(item.start_time, item.end_time);
         const deleting = deletingItemId === item.id;
-        const weather = itemWeather?.[item.id];
+        const daySummary = index === 0 || items[index - 1]?.day !== item.day ? daySummaries.get(item.day) : null;
         return (
-          <View key={item.id} style={[styles.row, { borderColor: visual.border }]}>
-            <View style={[styles.dateCol, { backgroundColor: visual.border }]}>
-              <Text style={styles.dateIndex}>#{index + 1}</Text>
-              <Text style={styles.dateText}>{schedule.split(" ")[0]}</Text>
-              <Text style={styles.timeText}>{item.start_time}</Text>
-            </View>
-            <Pressable style={styles.main} disabled={deleting} onPress={() => onEdit(item)}>
-              <View style={styles.header}>
-                <Text style={styles.itemTitle}>{item.title}</Text>
-                <Text style={styles.badge}>{categoryLabel[item.category]}</Text>
-              </View>
-              <Text style={styles.meta}>
-                {visual.icon} {visual.label} · {schedule}
-                {duration ? ` · ${duration}` : ""}
-              </Text>
-              <Text style={styles.location}>{item.location}</Text>
-              <Text style={styles.description} numberOfLines={2}>
-                {item.description}
-              </Text>
-              {weather ? (
-                <View style={[styles.weatherPill, weather.risk_level !== "low" ? styles.weatherPillWarn : null]}>
-                  <Text style={[styles.weatherText, weather.risk_level !== "low" ? styles.weatherTextWarn : null]} numberOfLines={2}>
-                    天气：{weather.label}
-                    {weather.risk_tags.length ? ` · ${weather.risk_tags.join("、")}` : ""}
-                    {weather.advice ? ` · ${weather.advice}` : ""}
-                  </Text>
-                </View>
-              ) : null}
-              {item.estimated_cost ? (
-                <Text style={styles.cost}>预估 ¥{item.estimated_cost}</Text>
-              ) : null}
-            </Pressable>
-            <View style={styles.actions}>
-              {(item.category === "food" || item.category === "hotel") && onRecommendPOI ? (
-                <Pressable
-                  style={[styles.actionBtn, styles.pickBtn, busy ? styles.actionDisabled : null]}
-                  disabled={busy || deleting}
-                  onPress={() => onRecommendPOI(item)}
-                >
-                  <Text style={styles.pickText}>选</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                style={[styles.actionBtn, index === 0 || busy || deleting ? styles.actionDisabled : null]}
-                disabled={index === 0 || busy || deleting}
-                onPress={() => onMoveUp(item.id)}
-              >
-                <Text style={styles.actionText}>↑</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.actionBtn, index === items.length - 1 || busy || deleting ? styles.actionDisabled : null]}
-                disabled={index === items.length - 1 || busy || deleting}
-                onPress={() => onMoveDown(item.id)}
-              >
-                <Text style={styles.actionText}>↓</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.actionBtn, styles.deleteBtn, busy || deleting ? styles.actionDisabled : null]}
-                disabled={busy || deleting || items.length <= 1}
-                onPress={() => onDelete(item.id)}
-              >
-                <Text style={[styles.actionText, styles.deleteText]}>删</Text>
-              </Pressable>
-            </View>
-            {deleting ? (
-              <View pointerEvents="none" style={[styles.deletingOverlay, webDeletingOverlay]}>
-                <Text style={styles.deletingText}>删除中</Text>
+          <Fragment key={item.id}>
+            {daySummary ? (
+              <View style={[styles.dayWeatherCard, daySummary.hasRisk ? styles.dayWeatherCardWarn : null]}>
+                <Text style={[styles.dayWeatherTitle, daySummary.hasRisk ? styles.dayWeatherTitleWarn : null]}>
+                  {daySummary.title}
+                </Text>
+                <Text style={[styles.dayWeatherDetail, daySummary.hasRisk ? styles.dayWeatherDetailWarn : null]} numberOfLines={2}>
+                  {daySummary.detail}
+                </Text>
+                <Text style={[styles.dayWeatherAdvice, daySummary.hasRisk ? styles.dayWeatherAdviceWarn : null]} numberOfLines={2}>
+                  {daySummary.advice}
+                </Text>
               </View>
             ) : null}
-          </View>
+            <View style={[styles.row, { borderColor: visual.border }]}>
+              <View style={[styles.dateCol, { backgroundColor: visual.border }]}>
+                <Text style={styles.dateIndex}>#{index + 1}</Text>
+                <Text style={styles.dateText}>{schedule.split(" ")[0]}</Text>
+                <Text style={styles.timeText}>{item.start_time}</Text>
+              </View>
+              <Pressable style={styles.main} disabled={deleting} onPress={() => onEdit(item)}>
+                <View style={styles.header}>
+                  <Text style={styles.itemTitle}>{item.title}</Text>
+                  <Text style={styles.badge}>{categoryLabel[item.category]}</Text>
+                </View>
+                <Text style={styles.meta}>
+                  {visual.icon} {visual.label} · {schedule}
+                  {duration ? ` · ${duration}` : ""}
+                </Text>
+                <Text style={styles.location}>{item.location}</Text>
+                <Text style={styles.description} numberOfLines={2}>
+                  {item.description}
+                </Text>
+                {item.estimated_cost ? (
+                  <Text style={styles.cost}>预估 ¥{item.estimated_cost}</Text>
+                ) : null}
+              </Pressable>
+              <View style={styles.actions}>
+                {(item.category === "food" || item.category === "hotel") && onRecommendPOI ? (
+                  <Pressable
+                    style={[styles.actionBtn, styles.pickBtn, busy ? styles.actionDisabled : null]}
+                    disabled={busy || deleting}
+                    onPress={() => onRecommendPOI(item)}
+                  >
+                    <Text style={styles.pickText}>选</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  style={[styles.actionBtn, index === 0 || busy || deleting ? styles.actionDisabled : null]}
+                  disabled={index === 0 || busy || deleting}
+                  onPress={() => onMoveUp(item.id)}
+                >
+                  <Text style={styles.actionText}>↑</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.actionBtn, index === items.length - 1 || busy || deleting ? styles.actionDisabled : null]}
+                  disabled={index === items.length - 1 || busy || deleting}
+                  onPress={() => onMoveDown(item.id)}
+                >
+                  <Text style={styles.actionText}>↓</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.actionBtn, styles.deleteBtn, busy || deleting ? styles.actionDisabled : null]}
+                  disabled={busy || deleting || items.length <= 1}
+                  onPress={() => onDelete(item.id)}
+                >
+                  <Text style={[styles.actionText, styles.deleteText]}>删</Text>
+                </Pressable>
+              </View>
+              {deleting ? (
+                <View pointerEvents="none" style={[styles.deletingOverlay, webDeletingOverlay]}>
+                  <Text style={styles.deletingText}>删除中</Text>
+                </View>
+              ) : null}
+            </View>
+          </Fragment>
         );
       })}
     </View>
@@ -169,16 +215,21 @@ const styles = StyleSheet.create({
   meta: { marginTop: 4, color: "#527099", fontSize: 10, fontWeight: "800" },
   location: { marginTop: 3, color: "#287CFF", fontSize: 10, fontWeight: "800" },
   description: { marginTop: 3, color: "#7085A2", fontSize: 10, lineHeight: 15, fontWeight: "700" },
-  weatherPill: {
-    marginTop: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 9,
+  dayWeatherCard: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
     backgroundColor: "#F2FFF9",
+    borderWidth: 1,
+    borderColor: "#C9F2DD",
   },
-  weatherPillWarn: { backgroundColor: "#FFF7ED" },
-  weatherText: { color: "#1A9D5C", fontSize: 10, lineHeight: 14, fontWeight: "800" },
-  weatherTextWarn: { color: "#F97316" },
+  dayWeatherCardWarn: { backgroundColor: "#FFF7ED", borderColor: "#FED7AA" },
+  dayWeatherTitle: { color: "#1A9D5C", fontSize: 11, fontWeight: "900" },
+  dayWeatherTitleWarn: { color: "#F97316" },
+  dayWeatherDetail: { marginTop: 3, color: "#2A7751", fontSize: 11, lineHeight: 15, fontWeight: "900" },
+  dayWeatherDetailWarn: { color: "#EA580C" },
+  dayWeatherAdvice: { marginTop: 2, color: "#4D8B6B", fontSize: 10, lineHeight: 14, fontWeight: "800" },
+  dayWeatherAdviceWarn: { color: "#F97316" },
   cost: { marginTop: 4, color: "#1B63FF", fontSize: 10, fontWeight: "900" },
   actions: { gap: 4, justifyContent: "center" },
   actionBtn: {
