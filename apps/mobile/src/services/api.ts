@@ -18,7 +18,7 @@ import {
   TravelPreferences,
 } from "../utils/travelPreferences";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://10.195.109.252:8000";
 const USER_ID = "demo-user";
 
 async function parseResponse<T>(response: Response): Promise<T> {

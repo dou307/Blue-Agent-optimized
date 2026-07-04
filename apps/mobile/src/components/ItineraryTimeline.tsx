@@ -57,8 +57,6 @@ type Props = {
   deletingItemId?: string | null;
   itemWeather?: Record<string, ItemWeatherInfo>;
   onEdit: (item: ItineraryItem) => void;
-  onMoveUp: (itemId: string) => void;
-  onMoveDown: (itemId: string) => void;
   onDelete: (itemId: string) => void;
   onNavigate?: (item: ItineraryItem) => void;
   onRecommendPOI?: (item: ItineraryItem) => void;
@@ -71,8 +69,6 @@ export function ItineraryTimeline({
   deletingItemId,
   itemWeather,
   onEdit,
-  onMoveUp,
-  onMoveDown,
   onDelete,
   onNavigate,
   onRecommendPOI,
@@ -161,13 +157,6 @@ export function ItineraryTimeline({
                     <Text style={styles.pickText}>选</Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  style={[styles.actionBtn, index === 0 || busy || deleting ? styles.actionDisabled : null]}
-                  disabled={index === 0 || busy || deleting}
-                  onPress={() => onMoveUp(item.id)}
-                >
-                  <Text style={styles.actionText}>↑</Text>
-                </Pressable>
                 {onNavigate ? (
                   <Pressable
                     style={[styles.actionBtn, styles.navigateBtn, busy || deleting ? styles.actionDisabled : null]}
@@ -177,16 +166,6 @@ export function ItineraryTimeline({
                     <Text style={styles.navigateText}>↗</Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  style={[
-                    styles.actionBtn,
-                    index === displayItems.length - 1 || busy || deleting ? styles.actionDisabled : null,
-                  ]}
-                  disabled={index === displayItems.length - 1 || busy || deleting}
-                  onPress={() => onMoveDown(item.id)}
-                >
-                  <Text style={styles.actionText}>↓</Text>
-                </Pressable>
                 <Pressable
                   style={[styles.actionBtn, styles.deleteBtn, busy || deleting ? styles.actionDisabled : null]}
                   disabled={busy || deleting || displayItems.length <= 1}

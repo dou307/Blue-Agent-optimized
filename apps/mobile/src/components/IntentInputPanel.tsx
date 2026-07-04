@@ -2,10 +2,8 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,7 +14,6 @@ import {
   setAudioModeAsync,
   useAudioRecorder,
 } from "expo-audio";
-import DateTimePicker, { DateTimePickerChangeEvent } from "@react-native-community/datetimepicker";
 import { WebViewMessageEvent } from "react-native-webview";
 
 import { parseIntent, transcribeVoice } from "../services/api";
@@ -38,7 +35,7 @@ import {
   toIsoDate,
   todayDate,
 } from "../utils/parseTravelInput";
-import { TravelPreferencesEntry, TravelPreferencesModal } from "./TravelPreferencesModal";
+import { TravelPreferencesInline } from "./TravelPreferencesModal";
 import {
   preferenceSummary,
   serializeTravelPreferences,
@@ -47,6 +44,8 @@ import {
 import { VOICE_RECORDING_OPTIONS } from "../utils/voiceRecording";
 
 export type InputMode = "voice" | "text" | "file";
+
+const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
 export type UploadedFile = {
   id: string;
@@ -78,12 +77,15 @@ export function IntentInputPanel({
   onAnalyze,
   loading,
 }: Props) {
-  const [preferencesVisible, setPreferencesVisible] = useState(false);
   const [mode, setMode] = useState<InputMode>("text");
   const audioRecorder = useAudioRecorder(VOICE_RECORDING_OPTIONS);
   const [listening, setListening] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [dateTarget, setDateTarget] = useState<"startDate" | "endDate" | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = todayDate();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [touched, setTouched] = useState<Record<keyof StructuredFields, boolean>>({
     origin: false,
     destination: false,
@@ -118,6 +120,15 @@ export function IntentInputPanel({
       if (parseTimer.current) clearTimeout(parseTimer.current);
     };
   }, [message, setStructured, touched]);
+
+  useEffect(() => {
+    if (!dateTarget) return;
+    const selectedDate = resolvePickerDate(
+      structured[dateTarget],
+      dateTarget === "endDate" ? structured.startDate : undefined,
+    );
+    setCalendarMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  }, [dateTarget, structured.startDate, structured.endDate]);
 
   function updateField(key: keyof StructuredFields, value: string) {
     setTouched((current) => ({ ...current, [key]: true }));
@@ -260,13 +271,18 @@ export function IntentInputPanel({
     await startRecording();
   }
 
-  function onDateValueChange(_event: DateTimePickerChangeEvent, date: Date) {
+  function onDateValueChange(date: Date) {
     if (!dateTarget) return;
     updateField(dateTarget, toIsoDate(date));
   }
 
   function closeDatePicker() {
     setDateTarget(null);
+  }
+
+  function updateTravelPreferences(value: TravelPreferences) {
+    onTravelPreferencesChange(value);
+    updateField("preferences", serializeTravelPreferences(value));
   }
 
   const pickerMinimumDate = todayDate();
@@ -277,6 +293,17 @@ export function IntentInputPanel({
         dateTarget === "endDate" ? structured.startDate : undefined,
       )
     : todayDate();
+
+  function moveCalendarMonth(offset: number) {
+    setCalendarMonth((current) => {
+      const next = new Date(current.getFullYear(), current.getMonth() + offset, 1);
+      const minMonth = new Date(pickerMinimumDate.getFullYear(), pickerMinimumDate.getMonth(), 1);
+      const maxMonth = new Date(pickerMaximumDate.getFullYear(), pickerMaximumDate.getMonth(), 1);
+      if (next < minMonth) return minMonth;
+      if (next > maxMonth) return maxMonth;
+      return next;
+    });
+  }
 
   return (
     <View style={styles.wrap}>
@@ -350,7 +377,9 @@ export function IntentInputPanel({
 
         {mode === "text" || mode === "file" ? (
           <View>
-            <Text style={styles.inputTitle}>描述您的出行需求</Text>
+            <View style={styles.sectionTitleBox}>
+              <Text style={styles.sectionTitleText}>描述您的出行需求</Text>
+            </View>
             <TextInput
               value={message}
               onChangeText={onMessageChange}
@@ -376,26 +405,9 @@ export function IntentInputPanel({
         ) : null}
       </View>
 
-      <Text style={styles.quickLabel}>行程要素</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
-        <FieldCard icon="📍" label="出发地" value={structured.origin} onChange={(value) => updateField("origin", value)} />
-        <FieldCard icon="📍" label="目的地" value={structured.destination} onChange={(value) => updateField("destination", value)} />
-        <FieldCard
-          icon="📅"
-          label="出发"
-          value={formatDisplayDate(structured.startDate)}
-          editable={false}
-          onPress={() => setDateTarget("startDate")}
-        />
-        <FieldCard
-          icon="📅"
-          label="结束"
-          value={formatDisplayDate(structured.endDate)}
-          editable={false}
-          onPress={() => setDateTarget("endDate")}
-        />
-        <FieldCard icon="⭐" label="偏好" value={structured.preferences || preferenceSummary(travelPreferences)} onChange={(value) => updateField("preferences", value)} />
-      </ScrollView>
+      <View style={styles.sectionTitleBox}>
+        <Text style={styles.sectionTitleText}>行程要素</Text>
+      </View>
 
       <View style={styles.routeHero}>
         <View style={styles.routeSide}>
@@ -435,65 +447,28 @@ export function IntentInputPanel({
       </View>
 
       {dateTarget ? (
-        Platform.OS === "android" ? (
-          <Modal transparent animationType="fade" visible onRequestClose={closeDatePicker}>
-            <View style={styles.dateModalBackdrop}>
-              <View style={styles.dateModalCard}>
-                <Text style={styles.dateModalTitle}>
-                  选择{dateTarget === "startDate" ? "出发" : "结束"}日期
-                </Text>
-                <DateTimePicker
-                  value={activePickerDate}
-                  mode="date"
-                  display="spinner"
-                  minimumDate={pickerMinimumDate}
-                  maximumDate={pickerMaximumDate}
-                  onValueChange={onDateValueChange}
-                  onDismiss={closeDatePicker}
-                />
-                <View style={styles.dateModalActions}>
-                  <Pressable style={styles.dateModalBtn} onPress={closeDatePicker}>
-                    <Text style={styles.dateModalBtnText}>完成</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
-        ) : (
-          <View style={styles.iosPickerWrap}>
-            <View style={styles.iosPickerHead}>
-              <Text style={styles.dateModalTitle}>
-                选择{dateTarget === "startDate" ? "出发" : "结束"}日期
-              </Text>
-              <Pressable onPress={closeDatePicker}>
-                <Text style={styles.dateModalDone}>完成</Text>
-              </Pressable>
-            </View>
-            <DateTimePicker
-              value={activePickerDate}
-              mode="date"
-              display="spinner"
-              minimumDate={pickerMinimumDate}
-              maximumDate={pickerMaximumDate}
-              onValueChange={onDateValueChange}
-            />
+        <View style={styles.calendarWrap}>
+          <View style={styles.calendarHead}>
+            <Text style={styles.dateModalTitle}>
+              选择{dateTarget === "startDate" ? "出发" : "结束"}日期
+            </Text>
+            <Pressable onPress={closeDatePicker}>
+              <Text style={styles.dateModalDone}>完成</Text>
+            </Pressable>
           </View>
-        )
+          <InlineCalendar
+            month={calendarMonth}
+            selectedDate={activePickerDate}
+            minimumDate={pickerMinimumDate}
+            maximumDate={pickerMaximumDate}
+            onPrevMonth={() => moveCalendarMonth(-1)}
+            onNextMonth={() => moveCalendarMonth(1)}
+            onSelectDate={onDateValueChange}
+          />
+        </View>
       ) : null}
 
-      <TravelPreferencesEntry value={travelPreferences} onPress={() => setPreferencesVisible(true)} />
-
-      <TravelPreferencesModal
-        visible={preferencesVisible}
-        value={travelPreferences}
-        onClose={() => setPreferencesVisible(false)}
-        onComplete={(value) => {
-          onTravelPreferencesChange(value);
-          updateField("preferences", serializeTravelPreferences(value));
-        }}
-      />
-
-      <EntityPreview structured={structured} message={message} travelPreferences={travelPreferences} />
+      <TravelPreferencesInline value={travelPreferences} onChange={updateTravelPreferences} />
 
       <Pressable
         style={[styles.cta, !hasTravelInput(message, structured) && styles.ctaDisabled]}
@@ -506,38 +481,78 @@ export function IntentInputPanel({
   );
 }
 
-function FieldCard({
-  icon,
-  label,
-  value,
-  onChange,
-  editable = true,
-  onPress,
+function InlineCalendar({
+  month,
+  selectedDate,
+  minimumDate,
+  maximumDate,
+  onPrevMonth,
+  onNextMonth,
+  onSelectDate,
 }: {
-  icon: string;
-  label: string;
-  value: string;
-  onChange?: (value: string) => void;
-  editable?: boolean;
-  onPress?: () => void;
+  month: Date;
+  selectedDate: Date;
+  minimumDate: Date;
+  maximumDate: Date;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  onSelectDate: (date: Date) => void;
 }) {
-  const content = (
-    <View style={styles.fieldCard}>
-      <Text style={styles.fieldCardIcon}>{icon}</Text>
-      <Text style={styles.fieldCardLabel}>{label}</Text>
-      {editable ? (
-        <TextInput style={styles.fieldCardValue} value={value} onChangeText={onChange} placeholder="填写" placeholderTextColor="#B2BFD0" />
-      ) : (
-        <Text style={styles.fieldCardValueStatic} numberOfLines={1}>
-          {value}
+  const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const leadingBlankCount = (monthStart.getDay() + 6) % 7;
+  const cells = [
+    ...Array.from({ length: leadingBlankCount }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => new Date(month.getFullYear(), month.getMonth(), index + 1)),
+  ];
+  const selectedIso = toIsoDate(selectedDate);
+  const minMonth = new Date(minimumDate.getFullYear(), minimumDate.getMonth(), 1);
+  const maxMonth = new Date(maximumDate.getFullYear(), maximumDate.getMonth(), 1);
+  const canPrev = monthStart > minMonth;
+  const canNext = monthStart < maxMonth;
+
+  return (
+    <View style={styles.calendar}>
+      <View style={styles.calendarNav}>
+        <Pressable style={[styles.calendarNavBtn, !canPrev && styles.calendarNavBtnDisabled]} onPress={onPrevMonth} disabled={!canPrev}>
+          <Text style={styles.calendarNavText}>‹</Text>
+        </Pressable>
+        <Text style={styles.calendarMonthText}>
+          {month.getFullYear()}年{month.getMonth() + 1}月
         </Text>
-      )}
+        <Pressable style={[styles.calendarNavBtn, !canNext && styles.calendarNavBtnDisabled]} onPress={onNextMonth} disabled={!canNext}>
+          <Text style={styles.calendarNavText}>›</Text>
+        </Pressable>
+      </View>
+      <View style={styles.calendarWeekRow}>
+        {WEEKDAY_LABELS.map((label) => (
+          <Text key={label} style={styles.calendarWeekText}>
+            {label}
+          </Text>
+        ))}
+      </View>
+      <View style={styles.calendarGrid}>
+        {cells.map((date, index) => {
+          if (!date) return <View key={`blank-${index}`} style={styles.calendarDayCell} />;
+          const iso = toIsoDate(date);
+          const disabled = date < minimumDate || date > maximumDate;
+          const selected = iso === selectedIso;
+          return (
+            <Pressable
+              key={iso}
+              style={[styles.calendarDayCell, selected && styles.calendarDaySelected, disabled && styles.calendarDayDisabled]}
+              onPress={() => onSelectDate(date)}
+              disabled={disabled}
+            >
+              <Text style={[styles.calendarDayText, selected && styles.calendarDayTextSelected, disabled && styles.calendarDayTextDisabled]}>
+                {date.getDate()}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
-  if (onPress) {
-    return <Pressable onPress={onPress}>{content}</Pressable>;
-  }
-  return content;
 }
 
 function EntityPreview({
@@ -609,6 +624,16 @@ const styles = StyleSheet.create({
   micIcon: { fontSize: 22, color: "#FFFFFF", fontWeight: "900" },
   voiceBody: { flex: 1, minWidth: 0 },
   inputTitle: { color: "#3A4E70", fontSize: 13, fontWeight: "900" },
+  sectionTitleBox: {
+    alignSelf: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: "#E8F7F3",
+    borderWidth: 1,
+    borderColor: "#BFE7DC",
+  },
+  sectionTitleText: { color: "#0F766E", fontSize: 16, fontWeight: "900", textAlign: "center" },
   waveRow: { flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 10, marginBottom: 8 },
   waveBar: { width: 4, borderRadius: 2, backgroundColor: "#89B8FF" },
   voiceHint: { color: "#7085A2", fontSize: 11, lineHeight: 16 },
@@ -625,24 +650,6 @@ const styles = StyleSheet.create({
   uploadList: { marginTop: 10, gap: 6 },
   uploadChip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: "#EEF6FF" },
   uploadChipText: { color: "#287CFF", fontSize: 11, fontWeight: "800" },
-  quickLabel: { color: "#8BA0BD", fontSize: 11, fontWeight: "900", paddingLeft: 4 },
-  quickRow: { gap: 10, paddingVertical: 4 },
-  fieldCard: {
-    width: 108,
-    minHeight: 92,
-    padding: 12,
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#7EA8E8",
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  fieldCardIcon: { fontSize: 16 },
-  fieldCardLabel: { marginTop: 6, color: "#A8B8CE", fontSize: 10, fontWeight: "900" },
-  fieldCardValue: { marginTop: 8, color: "#2F4568", fontSize: 15, fontWeight: "900", padding: 0 },
-  fieldCardValueStatic: { marginTop: 8, color: "#2F4568", fontSize: 13, fontWeight: "900" },
   routeHero: {
     flexDirection: "row",
     alignItems: "center",
@@ -691,36 +698,49 @@ const styles = StyleSheet.create({
   previewPill: { width: "48%", padding: 10, borderRadius: 12, backgroundColor: "#F7FBFF" },
   previewLabel: { color: "#287CFF", fontSize: 10, fontWeight: "900" },
   previewValue: { marginTop: 4, color: "#7085A2", fontSize: 11, lineHeight: 15 },
-  dateModalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(35,59,99,0.35)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  dateModalCard: {
-    borderRadius: 20,
-    padding: 16,
-    backgroundColor: "#FFFFFF",
-  },
-  dateModalTitle: { color: "#233B63", fontSize: 15, fontWeight: "900", marginBottom: 8 },
-  dateModalActions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8 },
-  dateModalBtn: {
-    minWidth: 88,
-    minHeight: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1B63FF",
-  },
-  dateModalBtnText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
-  iosPickerWrap: {
+  calendarWrap: {
     marginTop: 8,
     borderRadius: 18,
     backgroundColor: "#FFFFFF",
     padding: 12,
   },
-  iosPickerHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  calendarHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  dateModalTitle: { color: "#233B63", fontSize: 15, fontWeight: "900" },
   dateModalDone: { color: "#287CFF", fontSize: 13, fontWeight: "900" },
+  calendar: { marginTop: 12, gap: 10 },
+  calendarNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  calendarNavBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EAF3FF",
+  },
+  calendarNavBtnDisabled: { opacity: 0.35 },
+  calendarNavText: { color: "#287CFF", fontSize: 24, fontWeight: "900", lineHeight: 26 },
+  calendarMonthText: { color: "#1F3558", fontSize: 16, fontWeight: "900" },
+  calendarWeekRow: { flexDirection: "row" },
+  calendarWeekText: {
+    width: `${100 / 7}%`,
+    textAlign: "center",
+    color: "#9AAAC2",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap", rowGap: 6 },
+  calendarDayCell: {
+    width: `${100 / 7}%`,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+  },
+  calendarDaySelected: { backgroundColor: "#1B63FF" },
+  calendarDayDisabled: { opacity: 0.25 },
+  calendarDayText: { color: "#2F4568", fontSize: 14, fontWeight: "900" },
+  calendarDayTextSelected: { color: "#FFFFFF" },
+  calendarDayTextDisabled: { color: "#A8B8CE" },
   cta: {
     minHeight: 50,
     borderRadius: 18,

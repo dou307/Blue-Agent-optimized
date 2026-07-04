@@ -20,11 +20,9 @@ import {
   executeOrder,
   getGuardianStatus,
   getItineraryWeather,
-  getPriceQuote,
   getTripReview,
   optimizeItineraryByWeather,
   prepareOrder,
-  reorderNodes,
   requestReplan,
   searchAccommodationAreas,
   searchRecommendations,
@@ -41,7 +39,6 @@ import {
   Itinerary,
   ItineraryItem,
   ItemWeatherInfo,
-  ItineraryPriceQuote,
   ItineraryWeatherResponse,
   PlanComparison,
   PlanOption,
@@ -53,7 +50,7 @@ import {
   TripReview,
 } from "../types";
 import { buildEffectiveMessage, defaultStructured, parseTravelFromText, StructuredFields } from "../utils/parseTravelInput";
-import { defaultTravelPreferences, TravelPreferences } from "../utils/travelPreferences";
+import { defaultTravelPreferences, serializeTravelPreferences, TravelPreferences } from "../utils/travelPreferences";
 import { riskTextForItem } from "../utils/riskUtils";
 
 const samplePrompt = "";
@@ -91,18 +88,6 @@ function topologyStats(itinerary: Itinerary) {
     },
     { hard: 0, semi: 0, soft: 0, risks: 0 },
   );
-}
-
-function describePriceSources(sources: string[]) {
-  const labels: Record<string, string> = {
-    amap: "路线参考高德地图",
-    estimate: "费用含估算",
-  };
-  const mapped = sources.length ? sources.map((source) => labels[source] ?? source) : ["费用含估算"];
-  if (!mapped.includes("费用含估算") && !mapped.includes("餐饮/住宿含估算")) {
-    mapped.push("餐饮/住宿含估算");
-  }
-  return Array.from(new Set(mapped)).join(" · ");
 }
 
 function confirmDanger(title: string, message: string, onConfirm: () => void) {
@@ -239,7 +224,6 @@ export function TravelDirectorScreen() {
   const [proposal, setProposal] = useState<ReplanProposal | null>(null);
   const [review, setReview] = useState<TripReview | null>(null);
   const [analysis, setAnalysis] = useState<IntentAnalysis | null>(null);
-  const [priceQuote, setPriceQuote] = useState<ItineraryPriceQuote | null>(null);
   const [weather, setWeather] = useState<ItineraryWeatherResponse | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [amapErrorVisible, setAmapErrorVisible] = useState(false);
@@ -264,24 +248,6 @@ export function TravelDirectorScreen() {
     near_lat?: number;
     near_lng?: number;
   } | null>(null);
-
-  useEffect(() => {
-    if (!itinerary?.id) {
-      setPriceQuote(null);
-      return;
-    }
-    let cancelled = false;
-    getPriceQuote(itinerary.id)
-      .then((quote) => {
-        if (!cancelled) setPriceQuote(quote);
-      })
-      .catch(() => {
-        if (!cancelled) setPriceQuote(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [itinerary?.id, itinerary?.version, itinerary?.items.length]);
 
   useEffect(() => {
     if (!itinerary?.id) {
@@ -317,6 +283,14 @@ export function TravelDirectorScreen() {
     if (!weather?.available) return {};
     return Object.fromEntries(weather.item_weather.map((item) => [item.item_id, item]));
   }, [weather]);
+  const selectedTopologyQuote = selectedOption?.quote ?? order?.option.quote ?? null;
+  const analysisPreferenceText = useMemo(
+    () =>
+      Array.from(
+        new Set([structured.preferences.trim(), serializeTravelPreferences(travelPreferences).trim()].filter(Boolean)),
+      ).join(" / "),
+    [structured.preferences, travelPreferences],
+  );
 
   useEffect(() => {
     const hints = parseTravelFromText(message);
@@ -420,7 +394,6 @@ export function TravelDirectorScreen() {
         insert_after_item_id: poiContext.insert_after_item_id,
       });
       if (response.itinerary) await applyItineraryUpdate(response.itinerary);
-      setPriceQuote(response.price_quote);
       setPoiPickerVisible(false);
       setPoiContext(null);
       Alert.alert("节点已确定", `已选定「${candidate.name}」，总价更新为 ¥${response.price_quote.total}。`);
@@ -587,6 +560,7 @@ export function TravelDirectorScreen() {
     try {
       setSelectedOption(option);
       const response = await prepareOrder(comparison.id, option.id);
+      setSelectedOption(response.order.option);
       setOrder(response.order);
       setItinerary(response.order.option.itinerary);
       setStage("order");
@@ -605,6 +579,7 @@ export function TravelDirectorScreen() {
       const executed = await executeOrder(authorized.order.id);
       setOrder(executed.order);
       const executedItinerary = executed.order.option.itinerary;
+      setSelectedOption(executed.order.option);
       setItinerary(executedItinerary);
       const synced = await syncSystem(executedItinerary.id, executed.order.id);
       const calendarSync = await syncItineraryToDeviceCalendar(executedItinerary);
@@ -773,32 +748,6 @@ export function TravelDirectorScreen() {
     });
   }
 
-  async function handleMoveNode(itemId: string, direction: "up" | "down") {
-    if (!itinerary) return;
-    const index = itinerary.items.findIndex((item) => item.id === itemId);
-    if (index < 0) return;
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= itinerary.items.length) return;
-
-    const itemIds = itinerary.items.map((item) => item.id);
-    [itemIds[index], itemIds[targetIndex]] = [itemIds[targetIndex], itemIds[index]];
-
-    setNodeSaving(true);
-    try {
-      const response = await reorderNodes(itinerary.id, itemIds);
-      if (response.itinerary) await applyItineraryUpdate(response.itinerary);
-      const affected = response.affected_item_ids?.length ?? 0;
-      Alert.alert(
-        "顺序已更新",
-        `${response.change_summary || "节点顺序已调整。"}${affected ? `\n\n共联动 ${affected} 个节点。` : ""}`,
-      );
-    } catch (error) {
-      Alert.alert("调整失败", error instanceof Error ? error.message : "请稍后重试");
-    } finally {
-      setNodeSaving(false);
-    }
-  }
-
   async function handleWeatherOptimize() {
     if (!itinerary) return;
     setWeatherLoading(true);
@@ -881,7 +830,7 @@ export function TravelDirectorScreen() {
             ))}
           </ScrollView>
 
-          <AgentStatus loading={loading} subtitle={subtitle} />
+          {stage === "input" ? <AgentStatus loading={loading} subtitle={subtitle} /> : null}
 
           {stage === "input" ? (
             <View style={styles.section}>
@@ -904,6 +853,7 @@ export function TravelDirectorScreen() {
             <View style={styles.section}>
               <IntentAnalysisPanel
                 analysis={analysis}
+                travelPreferenceText={analysisPreferenceText}
                 loading={loading}
                 onConfirm={handleCompare}
                 onBack={() => setStage("input")}
@@ -1037,22 +987,22 @@ export function TravelDirectorScreen() {
             </View>
           ) : null}
 
-          {itinerary ? (
+          {itinerary && stage !== "input" ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>时空拓扑看板</Text>
               <TopologySummary itinerary={itinerary} />
-              {priceQuote ? (
+              {selectedTopologyQuote ? (
                 <View style={styles.priceCard}>
-                  <Text style={styles.priceCardTitle}>真实费用估算</Text>
-                  <Text style={styles.priceTotal}>¥{priceQuote.total}</Text>
+                  <Text style={styles.priceCardTitle}>已选方案报价</Text>
+                  <Text style={styles.priceTotal}>¥{selectedTopologyQuote.total_price}</Text>
                   <View style={styles.priceMetrics}>
-                    <Text style={styles.priceMetric}>交通 ¥{priceQuote.transport}</Text>
-                    <Text style={styles.priceMetric}>餐饮 ¥{priceQuote.food}</Text>
-                    <Text style={styles.priceMetric}>住宿 ¥{priceQuote.hotel}</Text>
+                    <Text style={styles.priceMetric}>耗时 {selectedTopologyQuote.duration_text}</Text>
+                    <Text style={styles.priceMetric}>舒适 {selectedTopologyQuote.comfort_score}</Text>
+                    <Text style={styles.priceMetric}>风险 {selectedTopologyQuote.risk_level}</Text>
                   </View>
-                  <Text style={styles.priceSource}>
-                    {describePriceSources(priceQuote.data_sources)} · 市内耗时 {priceQuote.duration_text}
-                  </Text>
+                  <Text style={styles.priceSource}>{selectedTopologyQuote.flight}</Text>
+                  <Text style={styles.priceSource}>{selectedTopologyQuote.hotel}</Text>
+                  <Text style={styles.priceSource}>{selectedTopologyQuote.local_transport}</Text>
                 </View>
               ) : null}
               <View style={styles.quickPickRow}>
@@ -1123,8 +1073,6 @@ export function TravelDirectorScreen() {
                 onEdit={handleEditNode}
                 onNavigate={handleNavigateToItem}
                 onRecommendPOI={handleRecommendFromItem}
-                onMoveUp={(itemId) => handleMoveNode(itemId, "up")}
-                onMoveDown={(itemId) => handleMoveNode(itemId, "down")}
                 onDelete={(itemId) => {
                   const item = itinerary.items.find((entry) => entry.id === itemId);
                   if (!item) return;
