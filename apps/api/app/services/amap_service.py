@@ -26,6 +26,77 @@ class AmapService:
     def configured(self) -> bool:
         return bool(self.settings.amap_api_key)
 
+    def traffic_summary(self, origin: str | None, destination: str | None) -> dict[str, Any]:
+        if not self.configured:
+            return {
+                "available": False,
+                "detail": "未配置高德 API Key，暂不能获取实时路况。",
+                "status": "warn",
+            }
+        if not origin or not destination:
+            return {
+                "available": False,
+                "detail": "出发地或目的地缺失，暂不能调用高德路况。",
+                "status": "warn",
+            }
+
+        try:
+            origin_geo = self.geocode(origin)
+            destination_geo = self.geocode(destination)
+            if not origin_geo or not destination_geo:
+                return {
+                    "available": False,
+                    "detail": "高德未解析到出发地或目的地坐标，路况暂不可用。",
+                    "status": "warn",
+                }
+            route = self._driving_route_live(origin_geo["location"], destination_geo["location"])
+        except Exception as error:
+            logger.warning("Amap traffic summary error: %s", error)
+            return {
+                "available": False,
+                "detail": "高德路况接口暂不可用，路况信息未更新。",
+                "status": "warn",
+            }
+
+        if not route:
+            return {
+                "available": False,
+                "detail": "高德未返回可用路线，路况暂不可用。",
+                "status": "warn",
+            }
+
+        distance_km = round(int(route.get("distance") or 0) / 1000, 1)
+        duration_minutes = max(1, int(route.get("duration") or 0) // 60)
+        congestion, has_risk = self._traffic_status(route)
+        status = "warn" if has_risk else "ok"
+        detail = f"高德实时路线：{origin} 到 {destination} 约 {distance_km} 公里，预计 {duration_minutes} 分钟；{congestion}。"
+        return {"available": True, "detail": detail, "status": status}
+
+    def geocode(self, address: str) -> dict[str, str] | None:
+        if not self.configured or not address:
+            return None
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(
+                f"{self.BASE}/geocode/geo",
+                params={"key": self.settings.amap_api_key, "address": address},
+            )
+            response.raise_for_status()
+            payload = response.json()
+        if payload.get("status") != "1":
+            logger.warning("Amap geocode failed: %s", payload.get("info"))
+            return None
+        geocodes = payload.get("geocodes") or []
+        if not geocodes:
+            return None
+        first = geocodes[0]
+        location = str(first.get("location") or "")
+        if "," not in location:
+            return None
+        return {
+            "location": location,
+            "formatted_address": str(first.get("formatted_address") or address),
+        }
+
     def search_poi(self, city: str, keywords: str, category: str = "food", limit: int = 8) -> list[dict[str, Any]]:
         if not self.configured:
             return self._fallback_poi(city, keywords, category)
@@ -120,6 +191,52 @@ class AmapService:
             "taxi_cost_yuan": max(15, int(13 + distance_km * 2.5)),
             "source": "estimate",
         }
+
+    def _driving_route_live(self, origin_location: str, destination_location: str) -> dict[str, Any] | None:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get(
+                f"{self.BASE}/direction/driving",
+                params={
+                    "key": self.settings.amap_api_key,
+                    "origin": origin_location,
+                    "destination": destination_location,
+                    "strategy": 0,
+                    "extensions": "all",
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        if payload.get("status") != "1":
+            logger.warning("Amap live route failed: %s", payload.get("info"))
+            return None
+        paths = (payload.get("route") or {}).get("paths") or []
+        return paths[0] if paths else None
+
+    @staticmethod
+    def _traffic_status(route: dict[str, Any]) -> tuple[str, bool]:
+        status_distance: dict[str, int] = {}
+        for step in route.get("steps") or []:
+            for tmc in step.get("tmcs") or []:
+                status = str(tmc.get("status") or "未知")
+                try:
+                    distance = int(tmc.get("distance") or 0)
+                except (TypeError, ValueError):
+                    distance = 0
+                status_distance[status] = status_distance.get(status, 0) + distance
+
+        status_distance = {status: distance for status, distance in status_distance.items() if distance > 0}
+        if not status_distance:
+            return "高德未返回分段拥堵状态", False
+
+        total = sum(status_distance.values()) or 1
+        ranked = sorted(status_distance.items(), key=lambda item: item[1], reverse=True)
+        labels = []
+        for status, distance in ranked[:3]:
+            percent = distance / total * 100
+            percent_label = "<1%" if 0 < percent < 1 else f"{round(percent)}%"
+            labels.append(f"{status}{percent_label}")
+        has_risk = any(status in {"缓行", "拥堵", "严重拥堵"} for status, distance in status_distance.items() if distance > 0)
+        return "路况占比 " + "、".join(labels), has_risk
 
     @staticmethod
     def _fallback_poi(city: str, keywords: str, category: str) -> list[dict[str, Any]]:

@@ -83,6 +83,64 @@ class QWeatherService:
     def configured(self) -> bool:
         return bool(self.api_key)
 
+    def city_weather_summary(self, city: str | None, target_date: str | None = None) -> dict[str, Any]:
+        if not self.configured:
+            return {
+                "available": False,
+                "detail": "未配置和风天气 API Key，暂不能获取实时天气。",
+                "status": "warn",
+            }
+        if not city:
+            return {
+                "available": False,
+                "detail": "目的地缺失，暂不能查询天气。",
+                "status": "warn",
+            }
+
+        try:
+            location_id = self._lookup_city_id(city)
+            daily = self._get("/v7/weather/7d", {"location": location_id}, ttl_seconds=10800).get("daily", [])
+        except Exception as error:
+            logger.warning("QWeather city summary failed: %s", error)
+            return {
+                "available": False,
+                "detail": "和风天气接口暂不可用，天气信息未更新。",
+                "status": "warn",
+            }
+
+        day = self._select_daily_weather(daily, target_date)
+        if not day:
+            return {
+                "available": False,
+                "detail": "和风天气未返回可用预报，天气信息未更新。",
+                "status": "warn",
+            }
+
+        text = str(day.get("textDay") or day.get("textNight") or "天气待更新")
+        temp_min = str(day.get("tempMin") or "")
+        temp_max = str(day.get("tempMax") or "")
+        pop = str(day.get("pop") or "0")
+        wind_dir = str(day.get("windDirDay") or "")
+        wind_scale = str(day.get("windScaleDay") or "")
+        fx_date = str(day.get("fxDate") or target_date or "近日")
+        risk_tags, risk_level, advice = self._risk(
+            text=text,
+            temp=_parse_int(temp_max),
+            pop=_parse_int(pop),
+            precip=_parse_float(day.get("precip")),
+            wind_scale=wind_scale,
+            category="sight",
+        )
+
+        temp_label = f"{temp_min}~{temp_max}°C" if temp_min and temp_max else "温度待更新"
+        wind_label = f"{wind_dir}{wind_scale}级" if wind_dir or wind_scale else "风力待更新"
+        detail = f"{fx_date} {city}：{text}，{temp_label}，降水概率 {pop}%，{wind_label}。"
+        if risk_tags:
+            detail += f" {'、'.join(risk_tags)}，{advice}"
+        else:
+            detail += " 天气风险较低。"
+        return {"available": True, "detail": detail, "status": "warn" if risk_level != "low" else "ok"}
+
     def itinerary_weather(self, itinerary: Itinerary) -> ItineraryWeatherResponse:
         if not self.configured:
             return ItineraryWeatherResponse(
@@ -169,6 +227,23 @@ class QWeatherService:
             if item.geo_lng is not None and item.geo_lat is not None:
                 return f"{item.geo_lng:.6f},{item.geo_lat:.6f}"
         return None
+
+    def _lookup_city_id(self, city: str) -> str:
+        payload = self._get("/geo/v2/city/lookup", {"location": city}, ttl_seconds=86400)
+        locations = payload.get("location") or []
+        if not locations:
+            raise RuntimeError("QWeather city lookup returned empty location")
+        return str(locations[0].get("id") or "")
+
+    @staticmethod
+    def _select_daily_weather(daily: list[dict[str, Any]], target_date: str | None) -> dict[str, Any] | None:
+        if not daily:
+            return None
+        if target_date:
+            matched = next((entry for entry in daily if entry.get("fxDate") == target_date), None)
+            if matched:
+                return matched
+        return daily[0]
 
     def _weather_for_item(
         self,

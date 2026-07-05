@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from app.agent.intent import intent_extractor
 from app.models.schemas import ContextInsight, FiveElements, IntentAnalyzeResponse, TravelIntent
-from app.tools.travel_tools import travel_tools
+from app.services.amap_service import amap_service
+from app.services.weather_service import weather_service
 
 
 class IntentAnalysisService:
     def analyze(self, message: str, user_id: str = "demo-user") -> IntentAnalyzeResponse:
         intent = intent_extractor.extract(message.strip())
-        date_range = " - ".join(filter(None, [intent.start_date, intent.end_date])) or None
-        weather = travel_tools.get_weather(intent.destination, date_range)
-        conflicts = travel_tools.check_calendar_conflicts(user_id, date_range)
 
         actions: list[str] = []
         if any(keyword in message for keyword in ["出差", "商务", "会议"]):
@@ -51,23 +49,23 @@ class IntentAnalysisService:
             preferences=intent.preferences or ["效率优先"],
         )
 
-        calendar_detail = (
-            f"已关联出行日期 {intent.start_date or '待定'}"
-            f"{' 至 ' + intent.end_date if intent.end_date else ''}；"
-            + ("无日程冲突" if not conflicts else "；".join(
-                f"{item.get('title', '会议')} {item.get('time', '')}" for item in conflicts[:2]
-            ))
-        )
-        weather_detail = (
-            f"{weather.get('summary', '多云')} {weather.get('temperature', '18~26℃')} "
-            f"降雨概率 {weather.get('rain_probability', '10%')}"
-        )
-        traffic_detail = f"{intent.destination}西单商圈高峰拥堵，{intent.must_visit[0] if intent.must_visit else '热门景点'}周末人流较大"
+        weather_context = weather_service.city_weather_summary(intent.destination, intent.start_date)
+        traffic_context = amap_service.traffic_summary(intent.origin, intent.destination)
 
         context = [
-            ContextInsight(key="calendar", title="日历", detail=calendar_detail, status="ok"),
-            ContextInsight(key="weather", title="天气", detail=weather_detail, status="ok"),
-            ContextInsight(key="traffic", title="路况", detail=traffic_detail, status="warn"),
+            self._calendar_context(intent),
+            ContextInsight(
+                key="weather",
+                title="天气",
+                detail=str(weather_context["detail"]),
+                status=weather_context["status"],
+            ),
+            ContextInsight(
+                key="traffic",
+                title="路况",
+                detail=str(traffic_context["detail"]),
+                status=traffic_context["status"],
+            ),
         ]
 
         structured = {
@@ -95,6 +93,20 @@ class IntentAnalysisService:
                 {"step": "上下文关联", "status": "done"},
                 {"step": "方案生成", "status": "pending"},
             ],
+        )
+
+    @staticmethod
+    def _calendar_context(intent: TravelIntent) -> ContextInsight:
+        date_label = (
+            f"{intent.start_date} 至 {intent.end_date}"
+            if intent.start_date and intent.end_date
+            else intent.start_date or intent.end_date or "待定"
+        )
+        return ContextInsight(
+            key="calendar",
+            title="日历",
+            detail=f"出行日期：{date_label}。手机系统日历需在执行阶段授权写入，云端分析阶段不读取本机日历，暂不判定冲突。",
+            status="warn",
         )
 
 
