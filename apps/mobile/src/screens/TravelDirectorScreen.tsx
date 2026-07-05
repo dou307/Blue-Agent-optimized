@@ -150,6 +150,42 @@ function resolveNextWidgetItem(items: ItineraryItem[], startDate?: string | null
   }) ?? sorted[0];
 }
 
+function applyStructuredOverrideToAnalysis(analysis: IntentAnalysis, structured: StructuredFields): IntentAnalysis {
+  const nextStructured = {
+    origin: structured.origin || analysis.structured.origin,
+    destination: structured.destination || analysis.structured.destination,
+    startDate: structured.startDate || analysis.structured.startDate,
+    endDate: structured.endDate || analysis.structured.endDate,
+    preferences: structured.preferences || analysis.structured.preferences,
+  };
+  const nextTime = [nextStructured.startDate, nextStructured.endDate].filter(Boolean);
+  return {
+    ...analysis,
+    structured: nextStructured,
+    intent: {
+      ...analysis.intent,
+      origin: nextStructured.origin || analysis.intent.origin,
+      destination: nextStructured.destination || analysis.intent.destination,
+      start_date: nextStructured.startDate || analysis.intent.start_date,
+      end_date: nextStructured.endDate || analysis.intent.end_date,
+      preferences: nextStructured.preferences
+        ? Array.from(new Set([...analysis.intent.preferences, ...nextStructured.preferences.split(/[/、,;；]/).map((item) => item.trim()).filter(Boolean)]))
+        : analysis.intent.preferences,
+    },
+    five_elements: {
+      ...analysis.five_elements,
+      locations: Array.from(
+        new Set(
+          [nextStructured.origin, nextStructured.destination, ...analysis.five_elements.locations]
+            .map((item) => item.trim())
+            .filter(Boolean),
+        ),
+      ),
+      time: nextTime.length ? nextTime : analysis.five_elements.time,
+    },
+  };
+}
+
 function encodeAmapParam(value: string) {
   return encodeURIComponent(value.trim());
 }
@@ -535,6 +571,7 @@ export function TravelDirectorScreen() {
   }
 
   async function handleAnalyze() {
+    const structuredSnapshot = structured;
     const effectiveMessage = buildEffectiveMessage(message, structured, selectedTags, travelPreferences);
     if (!effectiveMessage) {
       Alert.alert("请先输入需求", "可通过文字、语音，或填写出发地/目的地后解析。");
@@ -544,14 +581,15 @@ export function TravelDirectorScreen() {
     setLoading(true);
     try {
       const response = await analyzeIntent(effectiveMessage);
-      setAnalysis(response);
+      const normalizedResponse = applyStructuredOverrideToAnalysis(response, structuredSnapshot);
+      setAnalysis(normalizedResponse);
       setStructured((current) => ({
         ...current,
-        origin: response.structured.origin || current.origin,
-        destination: response.structured.destination || current.destination,
-        startDate: response.structured.startDate || current.startDate,
-        endDate: response.structured.endDate || current.endDate,
-        preferences: response.structured.preferences || current.preferences,
+        origin: structuredSnapshot.origin || normalizedResponse.structured.origin || current.origin,
+        destination: structuredSnapshot.destination || normalizedResponse.structured.destination || current.destination,
+        startDate: structuredSnapshot.startDate || normalizedResponse.structured.startDate || current.startDate,
+        endDate: structuredSnapshot.endDate || normalizedResponse.structured.endDate || current.endDate,
+        preferences: structuredSnapshot.preferences || normalizedResponse.structured.preferences || current.preferences,
       }));
       setStage("analyze");
     } catch (error) {
@@ -1254,6 +1292,7 @@ export function TravelDirectorScreen() {
 }
 
 function TopologySummary({ itinerary }: { itinerary: Itinerary }) {
+  const [expanded, setExpanded] = useState(false);
   const stats = topologyStats(itinerary);
   const chips = [
     { label: "硬锚点", value: `${stats.hard}`, tone: "blue" },
@@ -1264,12 +1303,19 @@ function TopologySummary({ itinerary }: { itinerary: Itinerary }) {
   return (
     <View style={styles.topologySummary}>
       <Text style={styles.topologyTitle} numberOfLines={2}>{itinerary.title}</Text>
-      <Text style={styles.topologyCopy} numberOfLines={3}>{itinerary.summary || itinerary.explanation}</Text>
+      <View style={styles.topologyCopyWrap}>
+        <Text style={[styles.topologyCopy, !expanded && styles.topologyCopyCollapsed]} numberOfLines={expanded ? undefined : 3}>
+          {itinerary.summary || itinerary.explanation}
+        </Text>
+        <Pressable style={styles.topologyCopyToggle} onPress={() => setExpanded((current) => !current)}>
+          <Text style={styles.topologyCopyToggleText}>{expanded ? "收起 ︿" : "展开更多 ﹀"}</Text>
+        </Pressable>
+      </View>
       <View style={styles.topologyChips}>
         {chips.map((chip) => (
           <View key={chip.label} style={[styles.topologyChip, chip.tone === "warn" && styles.topologyChipWarn]}>
             <Text style={styles.topologyChipValue}>{chip.value}</Text>
-            <Text style={styles.topologyChipLabel}>{chip.label}</Text>
+            <Text style={styles.topologyChipLabel} numberOfLines={1}>{chip.label}</Text>
           </View>
         ))}
       </View>
@@ -1359,7 +1405,7 @@ const styles = StyleSheet.create({
   bgOrbRight: { position: "absolute", right: -60, top: 40, width: 160, height: 160, borderRadius: 80, backgroundColor: "rgba(255,255,255,0.64)" },
   pageHead: { flexDirection: "row", alignItems: "center", gap: 12 },
   backBtn: { width: 31, height: 31, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.86)" },
-  backText: { marginTop: -4, color: "#4C84FF", fontSize: 28 },
+  backText: { width: 31, height: 31, color: "#4C84FF", fontSize: 28, lineHeight: 29, textAlign: "center" },
   titleBlock: { flex: 1, minWidth: 0 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   heading: { color: "#233B63", fontSize: 16, fontWeight: "900" },
@@ -1596,17 +1642,34 @@ const styles = StyleSheet.create({
   topologySummary: { gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#F7FBFF", marginBottom: 10 },
   topologyTitle: { color: "#233B63", fontSize: 13, fontWeight: "900" },
   topologyCopy: { color: "#7085A2", fontSize: 11, lineHeight: 16, fontWeight: "800" },
-  topologyChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  topologyCopyWrap: { gap: 4 },
+  topologyCopyCollapsed: {},
+  topologyCopyToggle: {
+    alignSelf: "flex-end",
+    minHeight: 24,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E7F3FF",
+  },
+  topologyCopyToggleText: { color: "#287CFF", fontSize: 10, lineHeight: 14, fontWeight: "900" },
+  topologyChips: { flexDirection: "row", flexWrap: "nowrap", gap: 6 },
   topologyChip: {
-    minWidth: 62,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    paddingHorizontal: 4,
+    paddingVertical: 7,
+    borderRadius: 10,
     backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
   },
   topologyChipWarn: { backgroundColor: "#FFF7ED" },
-  topologyChipValue: { color: "#287CFF", fontSize: 15, fontWeight: "900" },
-  topologyChipLabel: { marginTop: 2, color: "#7F93B1", fontSize: 9, fontWeight: "900" },
+  topologyChipValue: { color: "#287CFF", fontSize: 14, fontWeight: "900", lineHeight: 17 },
+  topologyChipLabel: { marginTop: 1, color: "#7F93B1", fontSize: 8, fontWeight: "900", textAlign: "center" },
   priceCard: {
     marginBottom: 10,
     padding: 12,

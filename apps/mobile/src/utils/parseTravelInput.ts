@@ -338,13 +338,17 @@ export function buildEffectiveMessage(
   tags: string[] = [],
   travelPreferences?: TravelPreferences,
 ) {
-  if (message.trim()) return message.trim();
-  if (!structured.origin.trim() || !structured.destination.trim()) return "";
+  const hasRoute = Boolean(structured.origin.trim() && structured.destination.trim());
+  if (!message.trim() && !hasRoute) return "";
   const tagText = tags.length ? `，标签：${tags.join("、")}` : "";
   const prefText = structured.preferences.trim()
     ? `，偏好：${structured.preferences}`
     : travelPreferences
       ? `，偏好：${serializeTravelPreferences(travelPreferences)}`
       : "";
-  return `从${structured.origin}去${structured.destination}，${formatDisplayDate(structured.startDate)}到${formatDisplayDate(structured.endDate)}出行${tagText}${prefText}`;
+  const structuredText = hasRoute
+    ? `以这些结构化字段为准：从${structured.origin}去${structured.destination}，${structured.startDate}至${structured.endDate}出行${tagText}${prefText}。`
+    : "";
+  const rawText = message.trim() ? `用户原始描述：${message.trim()}` : "";
+  return [structuredText, rawText].filter(Boolean).join("\n");
 }

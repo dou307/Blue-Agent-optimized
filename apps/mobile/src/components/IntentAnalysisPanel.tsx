@@ -1,6 +1,8 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { IntentAnalysis } from "../types";
+import { readCalendarContext } from "../services/deviceCalendar";
 
 type Props = {
   analysis: IntentAnalysis;
@@ -17,6 +19,8 @@ const elementMeta = [
   { key: "constraints" as const, label: "约束", icon: "🔒" },
   { key: "preferences" as const, label: "偏好", icon: "⭐" },
 ];
+
+type CalendarAuthState = "idle" | "authorizing" | "authorized";
 
 function splitPreferenceItems(values: string[]) {
   const seen = new Set<string>();
@@ -37,10 +41,45 @@ function splitPreferenceItems(values: string[]) {
 }
 
 export function IntentAnalysisPanel({ analysis, travelPreferenceText, loading, onConfirm, onBack }: Props) {
+  const [calendarAuthState, setCalendarAuthState] = useState<CalendarAuthState>("idle");
+  const [calendarDetail, setCalendarDetail] = useState("手机系统日历未授权");
+
+  useEffect(() => {
+    setCalendarAuthState("idle");
+    setCalendarDetail("手机系统日历未授权");
+  }, [analysis.structured.startDate, analysis.structured.endDate]);
+
   function valueForElement(key: (typeof elementMeta)[number]["key"]) {
     const values = analysis.five_elements[key];
     if (key !== "preferences") return values;
     return splitPreferenceItems([...values, ...(travelPreferenceText ? [travelPreferenceText] : [])]);
+  }
+
+  async function handleAuthorizeCalendar() {
+    if (calendarAuthState === "authorizing") return;
+    setCalendarAuthState("authorizing");
+    try {
+      const result = await readCalendarContext(analysis.structured.startDate, analysis.structured.endDate);
+      if (result.status === "authorized") {
+        setCalendarDetail(result.detail);
+        setCalendarAuthState("authorized");
+        return;
+      }
+      setCalendarDetail(result.detail || "手机系统日历未授权");
+      setCalendarAuthState("idle");
+      if (result.status === "permission-denied") {
+        Alert.alert("日历未授权", "请在系统权限设置中允许 Expo Go 访问日历。");
+      }
+    } catch (error) {
+      setCalendarAuthState("idle");
+      Alert.alert("授权失败", error instanceof Error ? error.message : "手机系统日历读取失败");
+    }
+  }
+
+  function travelDateLabel() {
+    const { startDate, endDate } = analysis.structured;
+    if (startDate && endDate) return `${startDate} 至 ${endDate}`;
+    return startDate || endDate || "待定";
   }
 
   return (
@@ -79,12 +118,36 @@ export function IntentAnalysisPanel({ analysis, travelPreferenceText, loading, o
       <View style={styles.sectionTitleBox}>
         <Text style={styles.sectionLabel}>系统上下文</Text>
       </View>
-      {analysis.context.map((item) => (
-        <View key={item.key} style={styles.contextRow}>
-          <Text style={styles.contextTitle}>{item.title}</Text>
-          <Text style={[styles.contextDetail, item.status === "warn" && styles.contextWarn]}>{item.detail}</Text>
-        </View>
-      ))}
+      {analysis.context.map((item) =>
+        item.key === "calendar" ? (
+          <View key={item.key} style={styles.contextRow}>
+            <View style={styles.contextHeader}>
+              <Text style={styles.contextTitle}>{item.title}</Text>
+              {calendarAuthState !== "authorized" ? (
+                <Pressable
+                  style={[styles.calendarAuthBtn, calendarAuthState === "authorizing" && styles.calendarAuthBtnBusy]}
+                  onPress={handleAuthorizeCalendar}
+                  disabled={calendarAuthState === "authorizing"}
+                >
+                  <Text style={styles.calendarAuthText}>
+                    {calendarAuthState === "authorizing" ? "授权中" : "点击授权"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={styles.contextDetail}>
+              出行日期：{travelDateLabel()}
+              {"\n"}
+              <Text style={styles.contextWarn}>{calendarDetail}</Text>
+            </Text>
+          </View>
+        ) : (
+          <View key={item.key} style={styles.contextRow}>
+            <Text style={styles.contextTitle}>{item.title}</Text>
+            <Text style={[styles.contextDetail, item.status === "warn" && styles.contextWarn]}>{item.detail}</Text>
+          </View>
+        ),
+      )}
 
       <View style={styles.actions}>
         <Pressable style={styles.secondaryBtn} onPress={onBack}>
@@ -142,9 +205,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     gap: 4,
   },
+  contextHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   contextTitle: { color: "#233B63", fontSize: 12, fontWeight: "900" },
   contextDetail: { color: "#7085A2", fontSize: 11, lineHeight: 16 },
-  contextWarn: { color: "#F97316" },
+  contextWarn: { color: "#F59E5B" },
+  calendarAuthBtn: {
+    minWidth: 72,
+    minHeight: 28,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F97316",
+  },
+  calendarAuthBtnBusy: { opacity: 0.75 },
+  calendarAuthText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
   actions: { flexDirection: "row", gap: 10, marginTop: 4 },
   secondaryBtn: {
     flex: 1,

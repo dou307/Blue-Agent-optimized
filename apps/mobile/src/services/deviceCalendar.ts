@@ -13,6 +13,11 @@ export type CalendarSyncOutcome = {
   eventIds: string[];
 };
 
+export type CalendarContextOutcome = {
+  status: "authorized" | "unsupported" | "permission-denied" | "skipped" | "failed";
+  detail: string;
+};
+
 function parseDateTime(startDate: string, day: number, time: string) {
   const [year, month, date] = startDate.split("-").map((value) => Number.parseInt(value, 10));
   const [hour, minute] = time.split(":").map((value) => Number.parseInt(value, 10));
@@ -40,6 +45,67 @@ function notesForItem(itinerary: Itinerary, item: ItineraryItem) {
     item.risk_flags.length ? `提醒：${item.risk_flags.join("、")}` : "",
   ].filter(Boolean);
   return lines.join("\n");
+}
+
+function parseDateOnly(value?: string | null) {
+  if (!value) return null;
+  const [year, month, date] = value.split("-").map((item) => Number.parseInt(item, 10));
+  if ([year, month, date].some((item) => Number.isNaN(item))) return null;
+  const result = new Date(year, month - 1, date, 0, 0, 0, 0);
+  return Number.isNaN(result.getTime()) ? null : result;
+}
+
+function formatEventTime(date: Date) {
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hour = `${date.getHours()}`.padStart(2, "0");
+  const minute = `${date.getMinutes()}`.padStart(2, "0");
+  return `${month}/${day} ${hour}:${minute}`;
+}
+
+export async function readCalendarContext(startDate?: string, endDate?: string): Promise<CalendarContextOutcome> {
+  if (Platform.OS === "web") {
+    return { status: "unsupported", detail: "网页端不支持读取手机系统日历。" };
+  }
+
+  const start = parseDateOnly(startDate);
+  if (!start) {
+    return { status: "skipped", detail: "出行日期待定，暂不能读取日历冲突。" };
+  }
+  const end = parseDateOnly(endDate) ?? new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  const permission = await Calendar.requestCalendarPermissionsAsync();
+  if (permission.status !== "granted") {
+    return { status: "permission-denied", detail: "手机系统日历未授权" };
+  }
+
+  try {
+    const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+    const calendarIds = calendars.map((item) => item.id);
+    if (!calendarIds.length) {
+      return { status: "authorized", detail: "手机系统日历已授权；未发现可读取的日历账户。" };
+    }
+
+    const events = await Calendar.getEventsAsync(calendarIds, start, end);
+    if (!events.length) {
+      return { status: "authorized", detail: "手机系统日历已授权；出行日期内暂无其他日程。" };
+    }
+
+    const eventSummary = events
+      .slice()
+      .sort((left, right) => new Date(left.startDate).getTime() - new Date(right.startDate).getTime())
+      .slice(0, 3)
+      .map((event) => `${formatEventTime(new Date(event.startDate))} ${event.title || "未命名日程"}`)
+      .join("；");
+    const more = events.length > 3 ? ` 等 ${events.length} 个日程` : "";
+    return { status: "authorized", detail: `已读取手机系统日历：${eventSummary}${more}` };
+  } catch (error) {
+    return {
+      status: "failed",
+      detail: error instanceof Error ? error.message : "手机系统日历读取失败",
+    };
+  }
 }
 
 async function ensureWritableCalendar() {
